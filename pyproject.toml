@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "max-agent"
+version = "0.1.0"
+description = "MAX — Local-first general-purpose AI computer agent for macOS"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+    { name = "MAX Architecture Team" }
+]
+dependencies = [
+    "pydantic>=2.0.0",
+    "rich>=13.0.0",
+    "typer>=0.9.0",
+    "openai>=1.0.0"
+]
+
+[project.scripts]
+max = "app.main:app"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*", "agent*", "capabilities*", "llm*", "macos*", "security*", "memory*"]

@@ -15,8 +15,13 @@ from memory.workflows import workflow_manager
 from voice.tts import speak_text, list_available_voices
 from voice.recorder import record_microphone
 from voice.whisper_stt import transcribe_audio, is_whisper_available
+from voice.assistant import VoiceAssistant
+from tasks.manager import task_manager
+from tasks.models import TaskState
 
 app = typer.Typer(help="MAX — Local General-Purpose AI Computer Agent for macOS", no_args_is_help=True)
+task_app = typer.Typer(help="Manage long-running background tasks and processes", no_args_is_help=True)
+app.add_typer(task_app, name="task")
 console = Console()
 
 
@@ -171,6 +176,16 @@ def doctor():
         tool_table.add_row(name, st_text, st.path or "-", st.version or "-")
     console.print(tool_table)
 
+    # Background Tasks & Event Subsystem
+    task_table = Table(title="Background Tasks & Event Subsystem", show_header=False)
+    task_table.add_column("Property", style="bold cyan", width=24)
+    task_table.add_column("Value", style="white")
+    task_table.add_row("Task Store (SQLite)", f"{settings.memory_db_path} ([bold green]Online[/bold green])")
+    task_table.add_row("Active Tasks", f"{diag.active_tasks_count} managed task(s) active")
+    task_table.add_row("Task Logs Directory", diag.tasks_log_dir)
+    task_table.add_row("Event Engine", "In-Process Thread-Safe EventBus ([bold green]Active[/bold green])")
+    console.print(task_table)
+
 
 @app.command()
 def memory(
@@ -271,8 +286,8 @@ def voice(
             console.print("\nAborted.")
         return
 
-    console.print(f"[bold green]Recording audio from microphone for {duration} seconds... Speak now![/bold green]")
-    rec = record_microphone(duration_seconds=duration)
+    console.print(f"[bold green]Recording audio from microphone (speak now)...[/bold green]")
+    rec = record_microphone(duration_seconds=duration, vad=True, silence_timeout=1.0)
     if not rec.success:
         console.print(f"[red]Failed to record audio: {rec.error}[/red]")
         return
@@ -289,6 +304,22 @@ def voice(
     console.print(Panel(report.final_summary, title="Outcome", border_style="green"))
     if speak_response:
         speak_text(report.final_summary)
+
+
+@app.command()
+def listen(
+    wake_word: str = typer.Option("max", "--wake-word", "-w", help="Wake word to activate assistant (default: 'max')"),
+    model: str = typer.Option("base.en", "--model", "-m", help="Local Whisper model for speech-to-text"),
+    voice_name: str = typer.Option(None, "--voice", "-v", help="TTS voice name (e.g. 'Samantha')"),
+):
+    """Continuous hands-free voice assistant mode. Call 'Max' to activate and give arbitrary tasks."""
+    assistant = VoiceAssistant(
+        wake_word=wake_word,
+        whisper_model=model,
+        voice=voice_name,
+        console=console,
+    )
+    assistant.run_continuous()
 
 
 @app.command()
@@ -330,6 +361,109 @@ def workflow(
             console.print(f"[red]Workflow '{name}' not found.[/red]")
             raise typer.Exit(1)
         console.print(Panel(wf.model_dump_json(indent=2), title=f"Workflow: {wf.name}", border_style="cyan"))
+
+
+@task_app.command("list")
+def task_list(
+    status: str = typer.Option(None, "--status", "-s", help="Filter by status: RUNNING, COMPLETED, FAILED, CANCELLED"),
+    limit: int = typer.Option(50, "--limit", "-n", help="Maximum tasks to display"),
+):
+    """List managed background tasks, daemons, and watchers."""
+    st_enum = None
+    if status:
+        try:
+            st_enum = TaskState(status.upper())
+        except ValueError:
+            pass
+
+    tasks = task_manager.list_tasks(status=st_enum, limit=limit)
+    if not tasks:
+        console.print("[dim]No managed tasks found in store.[/dim]")
+        return
+
+    table = Table(title="Managed Background Tasks", show_header=True, header_style="bold cyan")
+    table.add_column("Task ID", style="bold white", width=18)
+    table.add_column("Status", width=12)
+    table.add_column("Type", style="dim", width=14)
+    table.add_column("PID", style="yellow", width=8)
+    table.add_column("Command / Target", style="white")
+    table.add_column("Started", style="dim", width=22)
+
+    for t in tasks:
+        if t.status == TaskState.RUNNING:
+            st_style = "[green]RUNNING[/green]"
+        elif t.status == TaskState.COMPLETED:
+            st_style = "[blue]COMPLETED[/blue]"
+        elif t.status == TaskState.FAILED:
+            st_style = "[red]FAILED[/red]"
+        elif t.status == TaskState.CANCELLED:
+            st_style = "[yellow]CANCELLED[/yellow]"
+        elif t.status == TaskState.TIMED_OUT:
+            st_style = "[red]TIMED_OUT[/red]"
+        else:
+            st_style = f"[dim]{t.status.value}[/dim]"
+
+        table.add_row(
+            t.task_id,
+            st_style,
+            t.task_type.value,
+            str(t.pid or "-"),
+            t.command[:45] + ("..." if len(t.command) > 45 else ""),
+            (t.started_at or t.created_at)[:19].replace("T", " "),
+        )
+    console.print(table)
+
+
+@task_app.command("status")
+def task_status(task_id: str = typer.Argument(..., help="Unique task identifier")):
+    """Inspect detailed status, lifecycle timing, and process info for a task."""
+    t = task_manager.get_task(task_id)
+    if not t:
+        console.print(f"[red]Task '{task_id}' not found.[/red]")
+        raise typer.Exit(1)
+
+    table = Table(title=f"Task Details — {t.task_id}", show_header=False)
+    table.add_column("Property", style="bold cyan", width=20)
+    table.add_column("Value", style="white")
+
+    st_color = "green" if t.status == TaskState.RUNNING else ("blue" if t.status == TaskState.COMPLETED else "red")
+    table.add_row("Task ID", t.task_id)
+    table.add_row("Status", f"[{st_color}]{t.status.value}[/{st_color}]")
+    table.add_row("Type", t.task_type.value)
+    table.add_row("PID / PGID", f"{t.pid or '-'} / {t.pgid or '-'}")
+    table.add_row("Command", t.command)
+    table.add_row("Working Dir", t.working_dir)
+    table.add_row("Created At", t.created_at)
+    table.add_row("Started At", t.started_at or "-")
+    table.add_row("Finished At", t.finished_at or "-")
+    table.add_row("Exit Code", str(t.exit_code) if t.exit_code is not None else "-")
+    table.add_row("Log File", t.log_file or "-")
+    if t.error:
+        table.add_row("Error", f"[red]{t.error}[/red]")
+    console.print(table)
+
+
+@task_app.command("logs")
+def task_logs(
+    task_id: str = typer.Argument(..., help="Unique task identifier"),
+    tail: int = typer.Option(100, "--tail", "-n", help="Number of recent log lines to display"),
+):
+    """Inspect bounded stdout/stderr log output from a background task."""
+    logs, truncated = task_manager.get_logs(task_id, tail_lines=tail)
+    if truncated:
+        console.print(f"[dim yellow]... (showing last {tail} lines) ...[/dim yellow]")
+    console.print(logs.rstrip())
+
+
+@task_app.command("kill")
+def task_kill(task_id: str = typer.Argument(..., help="Unique task identifier to terminate")):
+    """Terminate an active background task and its child process tree safely."""
+    success, msg = task_manager.kill_task(task_id)
+    if success:
+        console.print(f"[bold green]✓ {msg}[/bold green]")
+    else:
+        console.print(f"[bold red]✗ {msg}[/bold red]")
+        raise typer.Exit(1)
 
 
 if __name__ == "__main__":

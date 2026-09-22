@@ -27,8 +27,16 @@ class CapabilityRegistry:
         return [cap.get_schema() for cap in self._capabilities.values()]
 
     def execute(self, capability_name: str, action: str, args: dict[str, Any]) -> ExecutionResult:
-        """Execute an action on a named capability."""
+        """Execute an action on a named capability with resilient routing."""
         cap = self.get(capability_name)
+        if cap and cap.has_operation(action):
+            return cap.execute(action, args)
+
+        # Resilient routing: if action is declared in another registered capability, auto-route
+        for other_name, other_cap in self._capabilities.items():
+            if other_cap.has_operation(action):
+                return other_cap.execute(action, args)
+
         if not cap:
             return ExecutionResult(
                 success=False,

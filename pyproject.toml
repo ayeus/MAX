@@ -23,4 +23,17 @@ max = "app.main:app"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["app*", "agent*", "capabilities*", "llm*", "macos*", "security*", "memory*"]
+include = [
+    "app*",
+    "agent*",
+    "capabilities*",
+    "llm*",
+    "macos*",
+    "security*",
+    "memory*",
+    "voice*",
+    "tasks*",
+    "event_engine*",
+    "telemetry*",
+    "verification*",
+]

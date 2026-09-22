@@ -7,7 +7,7 @@ import plistlib
 import subprocess
 import time
 from capabilities.base import Capability, Operation, ExecutionResult
-from macos.applescript import run_applescript
+from macos.applescript import run_applescript, escape_applescript_string
 from macos.shell import run_shell_command
 from security.risk import RiskLevel
 from security.confirmation import request_user_confirmation
@@ -71,8 +71,16 @@ class ApplicationsCapability(Capability):
             ),
         ]
 
-    def _discover_apps(self) -> dict[str, Path]:
-        """Scan standard macOS application directories for .app bundles."""
+    _apps_cache: dict[str, Path] | None = None
+    _cache_time: float = 0.0
+    _CACHE_TTL: float = 300.0  # 5 minutes
+
+    def _discover_apps(self, force_refresh: bool = False) -> dict[str, Path]:
+        """Scan standard macOS application directories for .app bundles with in-memory caching."""
+        now = time.time()
+        if not force_refresh and ApplicationsCapability._apps_cache is not None and (now - ApplicationsCapability._cache_time) < self._CACHE_TTL:
+            return ApplicationsCapability._apps_cache
+
         app_dirs = [
             Path("/Applications"),
             Path("/System/Applications"),
@@ -98,6 +106,8 @@ class ApplicationsCapability(Capability):
                                     discovered[str(display_name).lower()] = item
                         except Exception:
                             pass
+        ApplicationsCapability._apps_cache = discovered
+        ApplicationsCapability._cache_time = now
         return discovered
 
     def _get_running_process_names(self) -> list[str]:
@@ -113,10 +123,16 @@ class ApplicationsCapability(Capability):
         return []
 
     def list_installed_applications(self, filter_text: str | None = None) -> ExecutionResult:
+        audit_log.log_event(
+            event_type="tool_requested",
+            tool=self.name,
+            action="list_installed_applications",
+            details={"filter_text": filter_text},
+        )
         apps_dict = self._discover_apps()
-        results = []
         filter_lower = filter_text.lower().strip() if filter_text else None
 
+        results = []
         for name, path in apps_dict.items():
             if filter_lower and filter_lower not in name:
                 continue
@@ -157,10 +173,19 @@ class ApplicationsCapability(Capability):
             app_path_to_open = str(apps[clean_lower])
         else:
             # Check prefix / substring match
+            found = False
             for k, p in apps.items():
                 if clean_lower in k or k in clean_lower:
                     app_path_to_open = str(p)
+                    found = True
                     break
+            if not found:
+                # Cache miss: force refresh to discover newly installed apps
+                apps = self._discover_apps(force_refresh=True)
+                for k, p in apps.items():
+                    if clean_lower in k or k in clean_lower:
+                        app_path_to_open = str(p)
+                        break
 
         # Execute real launch via /usr/bin/open
         cmd = f"/usr/bin/open -a '{app_path_to_open}'"
@@ -185,13 +210,16 @@ class ApplicationsCapability(Capability):
             success=is_running,
         )
 
+        launch_ok = (res.exit_code == 0)
         return ExecutionResult(
-            success=is_running or res.success,
+            success=is_running,
             capability=self.name,
             action="launch_application",
             data={
                 "application": app_clean,
                 "target_opened": app_path_to_open,
+                "launch_command_succeeded": launch_ok,
+                "application_verified_running": is_running,
                 "open_exit_code": res.exit_code,
                 "verified_running": is_running,
             },
@@ -199,18 +227,22 @@ class ApplicationsCapability(Capability):
                 "launch_command": cmd,
                 "open_stdout": res.stdout,
                 "open_stderr": res.stderr,
+                "launch_command_succeeded": launch_ok,
                 "verified_running": is_running,
             },
             verification={
                 "process_present_in_process_list": is_running,
-                "open_command_exit_zero": res.exit_code == 0,
+                "open_command_exit_zero": launch_ok,
             },
-            error=res.stderr if res.exit_code != 0 and not is_running else None,
+            error=res.stderr if res.exit_code != 0 and not is_running else (
+                None if is_running else f"Application '{app_clean}' launch command executed, but process was not verified in running process list."
+            ),
         )
 
     def activate_application(self, application_name: str) -> ExecutionResult:
         app_clean = application_name.strip()
-        script = f'tell application "{app_clean}" to activate'
+        escaped = escape_applescript_string(app_clean)
+        script = f'tell application "{escaped}" to activate'
         res = run_applescript(script)
         return ExecutionResult(
             success=res.success,
@@ -239,7 +271,8 @@ class ApplicationsCapability(Capability):
 
     def quit_application(self, application_name: str) -> ExecutionResult:
         app_clean = application_name.strip()
-        script = f'tell application "{app_clean}" to quit'
+        escaped = escape_applescript_string(app_clean)
+        script = f'tell application "{escaped}" to quit'
         res = run_applescript(script)
         time.sleep(1)
 

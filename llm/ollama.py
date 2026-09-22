@@ -41,6 +41,24 @@ class OllamaProvider(LLMProvider):
             pass
         return []
 
+    def warmup(self) -> bool:
+        """Pre-warm and load the model into memory with keep_alive=-1 to eliminate cold-start latency."""
+        try:
+            payload = {
+                "model": self.model_name,
+                "keep_alive": -1,
+            }
+            req = urllib.request.Request(
+                f"{self.base_url}/api/generate",
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                return resp.status == 200
+        except Exception:
+            return False
+
     def generate(
         self,
         prompt: str,
@@ -53,6 +71,7 @@ class OllamaProvider(LLMProvider):
             "model": self.model_name,
             "prompt": prompt,
             "stream": False,
+            "keep_alive": -1,
             "options": {
                 "temperature": temperature,
             },
@@ -98,6 +117,7 @@ class OllamaProvider(LLMProvider):
             "model": self.model_name,
             "messages": [{"role": m.role, "content": m.content} for m in messages],
             "stream": False,
+            "keep_alive": -1,
             "options": {
                 "temperature": temperature,
             },

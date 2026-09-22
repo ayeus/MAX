@@ -47,6 +47,10 @@ class Planner:
 
     def create_plan(self, user_request: str, context: AgentContext) -> Plan:
         """Call LLM to formulate an execution plan to accomplish the user's requested outcome."""
+        if not self._provider:
+            from llm.model_manager import ModelCapability
+            model_manager.verify_and_resolve_model(ModelCapability.REASONING)
+
         schemas = registry.get_all_schemas()
         prompt = build_planning_prompt(
             user_request=user_request,
@@ -71,6 +75,8 @@ class Planner:
             elif isinstance(parsed, dict):
                 thought = parsed.get("thought", "Executing plan to achieve outcome")
                 raw_steps = parsed.get("plan", [])
+                while isinstance(raw_steps, dict) and "plan" in raw_steps:
+                    raw_steps = raw_steps["plan"]
                 if isinstance(raw_steps, dict):
                     raw_steps = [raw_steps]
                 elif not isinstance(raw_steps, list):
@@ -82,6 +88,8 @@ class Planner:
             steps = []
             for i, s in enumerate(raw_steps, 1):
                 if isinstance(s, dict):
+                    while "plan" in s and isinstance(s["plan"], dict):
+                        s = s["plan"]
                     steps.append(PlanStep(
                         step_number=s.get("step_number", i),
                         capability=str(s.get("capability", "terminal")).lower(),
@@ -100,8 +108,20 @@ class Planner:
                         is_optional=False,
                     ))
 
+            # Filter out invalid or blank steps
+            valid_steps = []
+            for s in steps:
+                if s.capability == "terminal" and s.action == "execute_command" and not s.args.get("command", "").strip():
+                    continue
+                valid_steps.append(s)
+            steps = valid_steps
+
             if not steps:
                 req_lower = user_request.lower()
+                # If this is a continuation prompt and no further steps are needed, return empty plan
+                if "formulate the next" in req_lower or "steps already completed" in req_lower:
+                    return Plan(thought=thought or "All necessary steps completed.", plan=[])
+
                 if "window" in req_lower:
                     steps.append(PlanStep(
                         step_number=1,

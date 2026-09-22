@@ -168,6 +168,7 @@ class TerminalCapability(Capability):
             success=res.success,
             capability=self.name,
             action="execute_command",
+            exit_code=res.exit_code,
             data={
                 "command": cmd_str,
                 "exit_code": res.exit_code,

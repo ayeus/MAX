@@ -17,6 +17,7 @@ class ExecutionResult(BaseModel):
     verification: dict[str, Any] = Field(default_factory=dict)
     error: str | None = None
     duration_ms: float = 0.0
+    exit_code: int | None = None
 
 
 class Operation(BaseModel):
@@ -42,6 +43,10 @@ class Capability(ABC):
         """Return list of operations supported by this capability."""
         pass
 
+    def has_operation(self, action: str) -> bool:
+        """Check if this capability supports the specified operation."""
+        return any(op.name == action for op in self.get_operations())
+
     def get_schema(self) -> dict[str, Any]:
         """Return JSON-serializable schema for the planner LLM."""
         return {
@@ -64,7 +69,11 @@ class Capability(ABC):
             if op.name == action:
                 if op.handler:
                     try:
-                        return op.handler(**args)
+                        import inspect
+                        sig = inspect.signature(op.handler)
+                        has_varkw = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
+                        call_args = args if has_varkw else {k: v for k, v in args.items() if k in sig.parameters}
+                        return op.handler(**call_args)
                     except TypeError as te:
                         return ExecutionResult(
                             success=False,

@@ -35,6 +35,8 @@ All computer control operations are encapsulated in capabilities that register w
 * `applications`: Dynamic discovery across standard application directories (`/Applications`, `/System/Applications`, `~/Applications`), launch via `/usr/bin/open`, activation, process presence verification.
 * `macos`: Native system interfaces including clipboard (`pbcopy`/`pbpaste`), Spotlight (`mdfind`), desktop notifications, and system settings (`defaults`).
 * `developer`: Git repository inspection, project stack auto-detection, and local listening ports (`lsof`).
+* `vision`: Local screen capture (`screencapture`), VLM understanding via Ollama (`moondream`), coordinate translation, and closed-loop visual clicks.
+* `tasks`: Management of asynchronous background processes, daemons, filesystem observers, and TCP port monitors.
 
 ### 2. Observation Engine (`agent/observer.py`)
 Observation is a first-class capability. MAX queries:
@@ -56,3 +58,17 @@ SQLite-backed persistent storage in `~/.max/memory.db`:
 - Explicit memories (`remember`, `forget`, `list`)
 - User preferences (e.g. editor, default project paths)
 - Session conversation history
+
+### 5. Long-Running Task & Process Supervisor (`tasks/`)
+Real background task execution and lifecycle supervision:
+- **Process Isolation**: Every background job is launched in an independent process group via `subprocess.Popen(..., start_new_session=True)`.
+- **Tree Termination**: When a task is cancelled, `TaskManager` signals the entire process group using `os.killpg(pgid, signal.SIGTERM)`, falling back to `SIGKILL` after a grace period. This guarantees child processes (e.g. node spawned by npm) are never orphaned.
+- **Bounded Stream Logging**: Task stdout and stderr are continuously written to `~/.max/logs/tasks/{task_id}.log`. Log retrieval tools read the trailing lines without loading unbounded files into memory.
+- **SQLite Persistence & Startup Orphan Reconciliation**: Tasks are persisted in the `managed_tasks` SQLite table. On system startup, `reconcile_orphan_tasks()` queries active OS processes (`os.kill(pid, 0)` and `ps`) to verify survival and mark dead/vanished processes appropriately.
+
+### 6. Event Engine & Deterministic Waiting (`event_engine/`)
+Event-driven reactive coordination:
+- **Thread-Safe EventBus**: Subscriptions, thread-pool dispatch, bounded event history (last 500 events).
+- **Typed Lifecycle Events**: `ProcessStartedEvent`, `ProcessExitedEvent`, `TaskCompletedEvent`, `TaskFailedEvent`, `TaskCancelledEvent`, `FileCreatedEvent`, `FileModifiedEvent`, `FileDeletedEvent`, `ServiceStatusChangedEvent`.
+- **Zero LLM Waste During Wait**: When MAX needs to await a long-running build, test suite, or file modification, it halts LLM invocation and uses deterministic condition synchronization (`EventBus.wait_for()`), only awakening the agent once the event fires or times out.
+

@@ -18,6 +18,16 @@ class AppleScriptResult(BaseModel):
         return self.exit_code == 0
 
 
+def escape_applescript_string(value: str) -> str:
+    """Safely escape arbitrary text for insertion into AppleScript string literals.
+
+    Prevents AppleScript injection by escaping backslashes and quotes.
+    """
+    if not value:
+        return ""
+    return value.replace("\\", "\\\\").replace('"', '\\"').replace("\r", "\\r").replace("\n", "\\n")
+
+
 def run_applescript(script: str, timeout: int = 15) -> AppleScriptResult:
     """Execute an AppleScript snippet via /usr/bin/osascript."""
     start_time = time.time()

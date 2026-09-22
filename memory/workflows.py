@@ -29,7 +29,10 @@ class Workflow(BaseModel):
 class WorkflowExecutionReport(BaseModel):
     workflow_name: str
     success: bool
+    status: Any = "UNKNOWN"
+    explanation: str = ""
     results: list[ExecutionResult] = Field(default_factory=list)
+    verifications: list[Any] = Field(default_factory=list)
 
 
 class WorkflowManager:
@@ -59,86 +62,142 @@ class WorkflowManager:
         # 1. Save to SQLite
         conn = get_db_connection()
         try:
-            with conn:
-                conn.execute(
-                    """
-                    INSERT INTO workflows (name, description, steps_json)
-                    VALUES (?, ?, ?)
-                    ON CONFLICT(name) DO UPDATE SET
-                        description = excluded.description,
-                        steps_json = excluded.steps_json
-                    """,
-                    (name_clean, description, steps_json),
-                )
+            conn.execute(
+                """
+                INSERT INTO workflows (name, description, steps_json)
+                VALUES (?, ?, ?)
+                ON CONFLICT(name) DO UPDATE SET
+                    description = excluded.description,
+                    steps_json = excluded.steps_json
+                """,
+                (wf.name, wf.description, steps_json),
+            )
+            conn.commit()
+        finally:
+            conn.close()
 
-            # 2. Write JSON file to ~/.max/workflows/<name>.json
-            json_path = self.workflows_dir / f"{name_clean}.json"
-            json_path.write_text(wf.model_dump_json(indent=2), encoding="utf-8")
-            return True
-        except Exception:
-            return False
+        # 2. Export to JSON file in ~/.max/workflows/
+        file_path = self.workflows_dir / f"{wf.name}.json"
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(wf.model_dump_json(indent=2))
+
+        return True
 
     def get_workflow(self, name: str) -> Workflow | None:
-        """Get workflow from SQLite or JSON file."""
+        """Retrieve workflow by name from SQLite."""
         name_clean = name.strip().lower().replace(" ", "_")
         conn = get_db_connection()
-        cur = conn.execute("SELECT * FROM workflows WHERE name = ?", (name_clean,))
-        row = cur.fetchone()
-        if row:
+        try:
+            row = conn.execute(
+                "SELECT name, description, steps_json, created_at FROM workflows WHERE name = ?",
+                (name_clean,),
+            ).fetchone()
+            if not row:
+                return None
+
             steps_data = json.loads(row["steps_json"])
             steps = [WorkflowStep(**s) for s in steps_data]
             return Workflow(
                 name=row["name"],
-                description=row["description"] or "",
+                description=row["description"],
                 steps=steps,
                 created_at=str(row["created_at"]),
             )
+        finally:
+            conn.close()
 
-        # Fallback to JSON file if present
-        json_path = self.workflows_dir / f"{name_clean}.json"
-        if json_path.exists():
-            try:
-                data = json.loads(json_path.read_text(encoding="utf-8"))
-                return Workflow(**data)
-            except Exception:
-                pass
-        return None
-
-    def list_workflows(self) -> list[dict[str, Any]]:
-        """List all available workflows."""
+    def list_workflows(self) -> list[dict[str, str]]:
+        """List all saved workflows."""
         conn = get_db_connection()
-        cur = conn.execute("SELECT name, description, created_at FROM workflows ORDER BY created_at DESC")
-        return [
-            {"name": r["name"], "description": r["description"], "created_at": str(r["created_at"])}
-            for r in cur.fetchall()
-        ]
+        try:
+            cur = conn.execute("SELECT name, description, created_at FROM workflows ORDER BY created_at DESC")
+            return [
+                {"name": r["name"], "description": r["description"], "created_at": str(r["created_at"])}
+                for r in cur.fetchall()
+            ]
+        finally:
+            conn.close()
 
     def execute_workflow(self, name: str) -> WorkflowExecutionReport:
-        """Replay all steps of a saved workflow in sequence."""
+        """Replay all steps of a saved workflow in sequence with closed-loop goal verification."""
         from capabilities import initialize_default_capabilities
+        from agent.observer import observer
+        from agent.planner import PlanStep
+        from agent.core import StepExecutionRecord
+        from verification import GoalStatus, goal_evaluator
+
         initialize_default_capabilities()
 
         wf = self.get_workflow(name)
         if not wf:
-            return WorkflowExecutionReport(workflow_name=name, success=False)
+            return WorkflowExecutionReport(
+                workflow_name=name,
+                success=False,
+                status=GoalStatus.UNKNOWN,
+                explanation=f"Workflow '{name}' not found.",
+            )
 
         results = []
-        overall_success = True
+        verifications = []
+        executed_records: list[StepExecutionRecord] = []
+        plan_steps = [
+            PlanStep(
+                step_number=s.step_number,
+                capability=s.capability,
+                action=s.action,
+                args=s.args,
+                verification_criteria=s.verification_criteria,
+                is_optional=False,
+            )
+            for s in wf.steps
+        ]
 
-        for step in wf.steps:
+        remaining_queue = list(plan_steps)
+        obs = observer.observe(fast=True)
+
+        for step in plan_steps:
+            remaining_queue.pop(0)
             res = registry.execute(
                 capability_name=step.capability,
                 action=step.action,
                 args=step.args,
             )
             results.append(res)
-            if not res.success:
-                overall_success = False
+            obs = observer.observe(fast=True)
+            verif = goal_evaluator.evaluate_step(step, res, obs)
+            verifications.append(verif)
+
+            record = StepExecutionRecord(
+                step=step,
+                result=res,
+                observation_after={
+                    "active_application": obs.active_application,
+                    "current_directory": obs.current_directory,
+                },
+                verification=verif,
+            )
+            executed_records.append(record)
+
+            # If step verification is not satisfied, stop executing remainder
+            if verif.status != GoalStatus.SATISFIED:
+                break
+
+        goal_eval = goal_evaluator.evaluate_goal(
+            user_request=wf.description or wf.name,
+            steps_executed=executed_records,
+            remaining_steps=remaining_queue,
+            last_observation=obs,
+        )
+
+        is_satisfied = (goal_eval.status == GoalStatus.SATISFIED)
 
         return WorkflowExecutionReport(
             workflow_name=name,
-            success=overall_success,
+            success=is_satisfied,
+            status=goal_eval.status,
+            explanation=goal_eval.explanation,
             results=results,
+            verifications=verifications,
         )
 
 

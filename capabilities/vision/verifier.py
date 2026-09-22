@@ -8,10 +8,12 @@ import time
 from typing import Optional
 from capabilities.vision.capture import capture_screen, CaptureResult
 from capabilities.vision.provider import VisionProvider, OllamaVisionProvider
+from verification.base import GoalStatus
 
 
 class VisualVerificationResult(BaseModel):
     verified: bool
+    status: str = GoalStatus.UNKNOWN.value
     screen_changed: bool
     explanation: str
     confidence: float = 0.0
@@ -22,17 +24,19 @@ class VisualVerificationResult(BaseModel):
 
 
 class ScreenVerifier:
-    """Verifies that an action resulted in an observable UI transition or state change."""
+    """Verifies whether an action resulted in the genuinely requested UI outcome."""
 
     def __init__(self, provider: Optional[VisionProvider] = None):
         self.provider = provider or OllamaVisionProvider()
 
     def _file_sizes_differ(self, path_a: str, path_b: str) -> bool:
-        """Heuristic check: file size differences in compressed PNG indicate visual delta."""
+        """Heuristic check: file size differences in compressed PNG indicate visual delta.
+
+        NOTE: Screen change is strictly an OBSERVATION, never PROOF of goal satisfaction.
+        """
         try:
             sz_a = Path(path_a).stat().st_size
             sz_b = Path(path_b).stat().st_size
-            # A difference of > 1KB in compressed PNG indicates visible UI changes
             return abs(sz_a - sz_b) > 1024
         except Exception:
             return False
@@ -44,7 +48,11 @@ class ScreenVerifier:
         pre_capture: Optional[CaptureResult] = None,
         settle_delay_seconds: float = 0.5,
     ) -> VisualVerificationResult:
-        """Capture screen post-action and verify whether the intended UI change occurred."""
+        """Capture screen post-action and verify whether the intended UI change occurred.
+
+        Never treats screen_changed as proof of success.
+        If the vision model fails or returns malformed output, returns UNKNOWN.
+        """
         start = time.time()
 
         # Allow UI animations/dialogs to settle
@@ -56,26 +64,27 @@ class ScreenVerifier:
         if not post_capture.success:
             return VisualVerificationResult(
                 verified=False,
+                status=GoalStatus.UNKNOWN.value,
                 screen_changed=False,
                 explanation="Failed to capture post-action screenshot for verification.",
                 error=post_capture.error,
                 duration_ms=(time.time() - start) * 1000.0,
             )
 
+        # Screen change is an observation only
         screen_changed = False
         if pre_capture and pre_capture.success and pre_capture.image_path:
             screen_changed = self._file_sizes_differ(pre_capture.image_path, post_capture.image_path)
 
-        # 2. Query vision model to verify state
+        # 2. Query vision model to verify goal-specific state
         prompt = (
             f"An automated UI action was just performed targeting '{target_description}'.\n"
             f"Expected outcome: '{expected_change}'.\n\n"
-            "Inspect the current screenshot. Has the expected UI state changed or been achieved?\n"
-            "(For example: did a new window, modal, menu, or checkmark appear, or did the screen update?)\n"
+            "Inspect the current screenshot. Has the expected UI state been achieved?\n"
             "Return JSON with format:\n"
             "{\n"
             '  "verified": true,\n'
-            '  "explanation": "Brief description of what happened or is now visible",\n'
+            '  "explanation": "Factual description of what visible evidence confirms or refutes the expected outcome",\n'
             '  "confidence": 0.85\n'
             "}\n"
             "If the expected outcome is not visible or failed, return: {\"verified\": false, \"explanation\": \"...\"}."
@@ -85,8 +94,9 @@ class ScreenVerifier:
         duration_ms = (time.time() - start) * 1000.0
 
         verified = False
-        explanation = "Verification completed."
-        confidence = 0.5
+        status = GoalStatus.UNKNOWN.value
+        explanation = "Verification inconclusive."
+        confidence = 0.0
 
         if resp.success:
             raw = resp.text.strip()
@@ -102,33 +112,37 @@ class ScreenVerifier:
                         pass
 
             if isinstance(data, dict):
-                verified = bool(data.get("verified", False))
+                is_verified = bool(data.get("verified", False))
                 explanation = data.get("explanation", raw)
-                confidence = float(data.get("confidence", 0.75))
-            else:
-                # If model returned text analysis
-                if "yes" in raw.lower() or "verified" in raw.lower() or "opened" in raw.lower():
+                confidence = float(data.get("confidence", 0.8))
+
+                if is_verified:
                     verified = True
-                    explanation = raw
+                    status = GoalStatus.SATISFIED.value
                 else:
-                    verified = screen_changed
-                    explanation = raw
+                    verified = False
+                    status = GoalStatus.UNSATISFIED.value
+            else:
+                # Malformed output from model -> UNKNOWN (never assume success or fallback to screen_changed)
+                verified = False
+                status = GoalStatus.UNKNOWN.value
+                explanation = f"VLM returned unparseable or unstructured response: {raw[:120]}"
         else:
-            # Fallback to physical screen diff if vision model fails
-            verified = screen_changed
-            explanation = (
-                f"Vision verification query failed ({resp.error}), "
-                f"but screen buffer {'changed' if screen_changed else 'remained identical'}."
-            )
+            # Model failed or unavailable -> UNKNOWN (never convert failure to success via screen diff)
+            verified = False
+            status = GoalStatus.UNKNOWN.value
+            explanation = f"Vision provider query failed ({resp.error}). Verification status is UNKNOWN."
 
         result = VisualVerificationResult(
             verified=verified,
+            status=status,
             screen_changed=screen_changed,
             explanation=explanation,
             confidence=confidence,
             pre_capture_path=pre_capture.image_path if pre_capture else None,
             post_capture_path=post_capture.image_path,
             duration_ms=duration_ms,
+            error=resp.error if not resp.success else None,
         )
 
         # Discard temporary screenshot to maintain privacy

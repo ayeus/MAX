@@ -129,13 +129,33 @@ def assess_path_risk(path: Path | str) -> RiskAssessment:
     )
 
 
+def analyze_command_structure(cmd: str) -> list[str]:
+    """Inspect structured shell constructs beyond regex: operators, pipes, redirects, subshells."""
+    features = []
+    if re.search(r"(&&|\|\||;)", cmd):
+        features.append("chained_commands")
+    if "|" in cmd:
+        features.append("pipe_operator")
+    if re.search(r"(>>|>|<)", cmd):
+        features.append("redirection")
+    if re.search(r"(\$\(|\`)", cmd):
+        features.append("subshell_command_substitution")
+    if re.search(r"\b(eval|exec)\b", cmd):
+        features.append("dynamic_evaluation")
+    if re.search(r"\b(base64\s+-d|xxd\s+-r)\b", cmd):
+        features.append("encoded_payload")
+    if re.search(r"\bsudo\b", cmd):
+        features.append("sudo_privilege_escalation")
+    return features
+
+
 def assess_command_risk(command_str: str) -> RiskAssessment:
-    """Analyze a shell command string for dangerous actions and security risks."""
+    """Analyze a shell command string for dangerous actions, structural patterns, and security risks."""
     cmd = command_str.strip()
     if not cmd:
         return RiskAssessment(level=RiskLevel.SAFE, reason="Empty command")
 
-    # Check BLOCKED patterns first
+    # 1. Check BLOCKED patterns first
     for pattern, reason in BLOCKED_PATTERNS:
         if re.search(pattern, cmd, re.IGNORECASE):
             return RiskAssessment(
@@ -145,7 +165,25 @@ def assess_command_risk(command_str: str) -> RiskAssessment:
                 affected_targets=[cmd],
             )
 
-    # Check HIGH risk patterns
+    # 2. Structured Analysis Checks
+    struct_features = analyze_command_structure(cmd)
+    if "encoded_payload" in struct_features and ("pipe_operator" in struct_features or "subshell_command_substitution" in struct_features):
+        return RiskAssessment(
+            level=RiskLevel.BLOCKED,
+            reason="Piping encoded payload directly into shell execution is blocked.",
+            requires_confirmation=False,
+            affected_targets=[cmd],
+        )
+
+    if "dynamic_evaluation" in struct_features and "sudo_privilege_escalation" in struct_features:
+        return RiskAssessment(
+            level=RiskLevel.BLOCKED,
+            reason="Dynamic shell evaluation with sudo privileges is blocked.",
+            requires_confirmation=False,
+            affected_targets=[cmd],
+        )
+
+    # 3. Check HIGH risk patterns
     for pattern, reason in HIGH_RISK_PATTERNS:
         if re.search(pattern, cmd, re.IGNORECASE):
             return RiskAssessment(
@@ -155,7 +193,16 @@ def assess_command_risk(command_str: str) -> RiskAssessment:
                 affected_targets=[cmd],
             )
 
-    # Check MEDIUM risk patterns
+    # If subshell or dynamic evaluation is present, treat as HIGH risk
+    if "dynamic_evaluation" in struct_features:
+        return RiskAssessment(
+            level=RiskLevel.HIGH,
+            reason="Command contains dynamic shell evaluation (eval/exec).",
+            requires_confirmation=True,
+            affected_targets=[cmd],
+        )
+
+    # 4. Check MEDIUM risk patterns
     for pattern, reason in MEDIUM_RISK_PATTERNS:
         if re.search(pattern, cmd, re.IGNORECASE):
             return RiskAssessment(

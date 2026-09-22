@@ -26,19 +26,127 @@ def is_whisper_available() -> bool:
         return False
 
 
-def transcribe_audio(wav_path: str | Path, model_name: str = "base") -> TranscriptionResult:
-    """Transcribe an audio file using local Whisper."""
-    p = Path(wav_path)
-    if not p.exists():
-        return TranscriptionResult(
-            success=False,
-            text="",
-            error=f"Audio file '{wav_path}' does not exist.",
-        )
+import wave
+import numpy as np
 
-    # Check CLI first
+
+def load_audio_waveform(wav_path: Path) -> np.ndarray:
+    """Load a WAV audio file directly as a normalized float32 numpy array sampled at 16kHz."""
+    with wave.open(str(wav_path), "rb") as wf:
+        n_channels = wf.getnchannels()
+        sampwidth = wf.getsampwidth()
+        framerate = wf.getframerate()
+        n_frames = wf.getnframes()
+        raw_bytes = wf.readframes(n_frames)
+
+    if sampwidth == 2:
+        audio = np.frombuffer(raw_bytes, dtype=np.int16).astype(np.float32) / 32768.0
+    elif sampwidth == 4:
+        audio = np.frombuffer(raw_bytes, dtype=np.int32).astype(np.float32) / 2147483648.0
+    elif sampwidth == 1:
+        audio = (np.frombuffer(raw_bytes, dtype=np.uint8).astype(np.float32) - 128.0) / 128.0
+    else:
+        raise ValueError(f"Unsupported sample width: {sampwidth}")
+
+    if n_channels > 1:
+        audio = audio.reshape(-1, n_channels).mean(axis=1)
+
+    if framerate != 16000:
+        try:
+            from scipy import signal
+            num_samples = int(len(audio) * 16000 / framerate)
+            audio = signal.resample(audio, num_samples)
+        except Exception:
+            pass
+
+    return audio
+
+
+import threading
+from typing import Any, Optional
+
+
+class STTService:
+    """Manages warm in-memory instances of Whisper models to eliminate cold-load latency."""
+
+    _models: dict[str, Any] = {}
+    _lock = threading.Lock()
+
+    @classmethod
+    def get_model(cls, model_name: str = "base.en") -> Any:
+        with cls._lock:
+            if model_name not in cls._models:
+                import whisper
+                cls._models[model_name] = whisper.load_model(model_name)
+            return cls._models[model_name]
+
+    @classmethod
+    def preload(cls, model_names: Optional[list[str]] = None) -> None:
+        """Preload models at assistant startup."""
+        names = model_names or ["base.en", "tiny.en"]
+        for m in names:
+            try:
+                cls.get_model(m)
+            except Exception:
+                pass
+
+    @classmethod
+    def is_warmed(cls, model_name: str = "base.en") -> bool:
+        return model_name in cls._models
+
+
+def transcribe_audio(
+    wav_path: Optional[str | Path] = None,
+    audio_waveform: Optional[np.ndarray] = None,
+    model_name: str = "base.en",
+) -> TranscriptionResult:
+    """Transcribe an audio file or direct in-memory float32 waveform using warm local Whisper."""
+    audio: Optional[np.ndarray] = audio_waveform
+
+    if audio is None:
+        if not wav_path:
+            return TranscriptionResult(
+                success=False,
+                text="",
+                error="Neither wav_path nor audio_waveform was provided.",
+            )
+        p = Path(wav_path)
+        if not p.exists():
+            return TranscriptionResult(
+                success=False,
+                text="",
+                error=f"Audio file '{wav_path}' does not exist.",
+            )
+        try:
+            audio = load_audio_waveform(p)
+        except Exception as e:
+            return TranscriptionResult(
+                success=False,
+                text="",
+                error=f"Failed to load audio waveform: {e}",
+            )
+
+    # 1. Use warm in-memory Whisper instance (zero reload latency)
+    try:
+        import time
+        start = time.time()
+        model = STTService.get_model(model_name)
+        result = model.transcribe(audio, fp16=False)
+        duration_ms = (time.time() - start) * 1000.0
+        return TranscriptionResult(
+            success=True,
+            text=result.get("text", "").strip(),
+            duration_ms=duration_ms,
+            model=model_name,
+        )
+    except ImportError:
+        pass
+    except Exception as e:
+        pass
+
+    # 2. Check CLI fallback if ffmpeg is present
     whisper_bin = shutil.which("whisper")
-    if whisper_bin:
+    if whisper_bin and shutil.which("ffmpeg"):
         import time
         start = time.time()
         res = run_shell_command(
@@ -63,32 +171,12 @@ def transcribe_audio(wav_path: str | Path, model_name: str = "base") -> Transcri
             error=res.stderr or "Whisper did not generate transcription.",
         )
 
-    # Check python package
-    try:
-        import whisper
-        import time
-        start = time.time()
-        model = whisper.load_model(model_name)
-        result = model.transcribe(str(p))
-        duration_ms = (time.time() - start) * 1000.0
-        return TranscriptionResult(
-            success=True,
-            text=result.get("text", "").strip(),
-            duration_ms=duration_ms,
-            model=model_name,
-        )
-    except ImportError:
-        return TranscriptionResult(
-            success=False,
-            text="",
-            error=(
-                "Whisper is not currently installed. To enable local voice STT, run: "
-                "pip install openai-whisper"
-            ),
-        )
-    except Exception as e:
-        return TranscriptionResult(
-            success=False,
-            text="",
-            error=f"Whisper transcription failed: {e}",
-        )
+    return TranscriptionResult(
+        success=False,
+        text="",
+        error=(
+            "Whisper is not currently installed or failed to initialize. "
+            "To enable local voice STT, run: pip install openai-whisper"
+        ),
+    )
+

@@ -14,7 +14,13 @@ class AudioRecording(BaseModel):
     error: str | None = None
 
 
-def record_microphone(duration_seconds: float = 4.0, output_wav: Path | None = None) -> AudioRecording:
+def record_microphone(
+    duration_seconds: float = 4.0,
+    output_wav: Path | None = None,
+    vad: bool = False,
+    silence_timeout: float = 1.0,
+    threshold_db: float | None = None,
+) -> AudioRecording:
     """Record audio from macOS default microphone into a 16kHz mono WAV file."""
     recorder_bin = Path(__file__).parent.parent / "bin/max-recorder"
     if not recorder_bin.exists():
@@ -32,9 +38,16 @@ def record_microphone(duration_seconds: float = 4.0, output_wav: Path | None = N
     else:
         target_path = output_wav
 
+    cmd = [str(recorder_bin), str(target_path), str(duration_seconds)]
+    if vad:
+        cmd.append("--vad")
+        cmd.extend(["--silence", str(silence_timeout)])
+        if threshold_db is not None:
+            cmd.extend(["--threshold", str(threshold_db)])
+
     try:
         proc = subprocess.run(
-            [str(recorder_bin), str(target_path), str(duration_seconds)],
+            cmd,
             capture_output=True,
             text=True,
             timeout=int(duration_seconds) + 5,

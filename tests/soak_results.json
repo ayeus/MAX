@@ -1,0 +1,48 @@
+{
+  "total_commands": 3,
+  "succeeded": 2,
+  "unsatisfied": 1,
+  "unknown": 0,
+  "failed": 0,
+  "dropped_commands": 0,
+  "recovery_events": 0,
+  "initial_rss_mb": 46.39,
+  "final_rss_mb": 47.11,
+  "peak_rss_mb": 47.11,
+  "rss_growth_mb": 0.72,
+  "avg_latency_ms": 4928.73,
+  "deterministic_verifications": 4,
+  "vision_verifications": 0,
+  "commands": [
+    {
+      "index": 1,
+      "command": "Check macOS version",
+      "status": "SATISFIED",
+      "duration_ms": 6201.930999755859,
+      "memory_rss_mb": 44.8125,
+      "steps_count": 1,
+      "evaluation": "All planned steps executed and verified successfully.",
+      "failure_classification": null
+    },
+    {
+      "index": 2,
+      "command": "Check system uptime",
+      "status": "SATISFIED",
+      "duration_ms": 6228.48916053772,
+      "memory_rss_mb": 44.0625,
+      "steps_count": 1,
+      "evaluation": "All planned steps executed and verified successfully.",
+      "failure_classification": null
+    },
+    {
+      "index": 3,
+      "command": "Check current user and machine hostname",
+      "status": "UNSATISFIED",
+      "duration_ms": 2355.7822704315186,
+      "memory_rss_mb": 47.109375,
+      "steps_count": 2,
+      "evaluation": "Required step 'filesystem.read_file' was not satisfied: Action 'filesystem.read_file' failed: File '/private/etc/hostname' does not exist or is not a regular file.",
+      "failure_classification": "Environmental (expected negative check or query)"
+    }
+  ]
+}

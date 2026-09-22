@@ -82,23 +82,20 @@ class OllamaVisionProvider(VisionProvider):
         return []
 
     def _resolve_model(self) -> Optional[str]:
-        """Discover an installed vision-capable model."""
+        """Discover an installed vision-capable model using central ModelManager."""
         installed = self._get_installed_models()
         if not installed:
             return None
 
         # 1. Check if preferred_model is installed
-        for m in installed:
-            if m == self.preferred_model or m.startswith(self.preferred_model.split(":")[0]):
-                return m
-
-        # 2. Check known vision models
-        for known in KNOWN_VISION_MODELS:
+        if self.preferred_model:
             for m in installed:
-                if m == known or m.startswith(known.split(":")[0]):
+                if m == self.preferred_model or m.startswith(self.preferred_model.split(":")[0]):
                     return m
 
-        return None
+        # 2. Delegate to central ModelManager
+        from llm.model_manager import model_manager, ModelCapability
+        return model_manager.verify_and_resolve_model(ModelCapability.VISION)
 
     def is_available(self) -> bool:
         """Verify Ollama is reachable and a vision-capable model is installed."""

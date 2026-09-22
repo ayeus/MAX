@@ -1,0 +1,68 @@
+{
+  "total_commands": 5,
+  "succeeded": 3,
+  "unsatisfied": 2,
+  "unknown": 0,
+  "failed": 0,
+  "dropped_commands": 0,
+  "recovery_events": 0,
+  "initial_rss_mb": 58.2,
+  "final_rss_mb": 33.25,
+  "peak_rss_mb": 58.2,
+  "rss_growth_mb": -24.95,
+  "avg_latency_ms": 9333.1,
+  "deterministic_verifications": 10,
+  "vision_verifications": 0,
+  "commands": [
+    {
+      "index": 1,
+      "command": "Check macOS version",
+      "status": "SATISFIED",
+      "duration_ms": 6719.568252563477,
+      "memory_rss_mb": 34.78125,
+      "steps_count": 1,
+      "evaluation": "All planned steps executed and verified successfully.",
+      "failure_classification": null
+    },
+    {
+      "index": 2,
+      "command": "Check system uptime",
+      "status": "UNSATISFIED",
+      "duration_ms": 12015.899896621704,
+      "memory_rss_mb": 38.234375,
+      "steps_count": 2,
+      "evaluation": "Required step 'system.get_uptime' was not satisfied: Action 'system.get_uptime' failed: Capability 'system' is not registered.",
+      "failure_classification": "Environmental (expected negative check or query)"
+    },
+    {
+      "index": 3,
+      "command": "Check current user and machine hostname",
+      "status": "UNSATISFIED",
+      "duration_ms": 14325.18219947815,
+      "memory_rss_mb": 29.453125,
+      "steps_count": 5,
+      "evaluation": "Required step 'applications.activate_application' was not satisfied: Application 'Antigravity IDE' was activated but frontmost application is 'Electron'.",
+      "failure_classification": "Environmental (expected negative check or query)"
+    },
+    {
+      "index": 4,
+      "command": "List files in /tmp directory",
+      "status": "SATISFIED",
+      "duration_ms": 6739.243984222412,
+      "memory_rss_mb": 32.828125,
+      "steps_count": 1,
+      "evaluation": "All planned steps executed and verified successfully.",
+      "failure_classification": null
+    },
+    {
+      "index": 5,
+      "command": "Check if /tmp directory exists",
+      "status": "SATISFIED",
+      "duration_ms": 6865.583896636963,
+      "memory_rss_mb": 33.234375,
+      "steps_count": 1,
+      "evaluation": "All planned steps executed and verified successfully.",
+      "failure_classification": null
+    }
+  ]
+}

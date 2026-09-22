@@ -10,6 +10,7 @@ from .developer import DeveloperCapability
 from .accessibility import AccessibilityCapability
 from .browser import BrowserCapability
 from .vision import VisionCapability
+from .tasks import TaskCapability
 
 
 def initialize_default_capabilities() -> CapabilityRegistry:
@@ -23,6 +24,7 @@ def initialize_default_capabilities() -> CapabilityRegistry:
         registry.register(AccessibilityCapability())
         registry.register(BrowserCapability())
         registry.register(VisionCapability())
+        registry.register(TaskCapability())
     return registry
 
 

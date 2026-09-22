@@ -35,7 +35,19 @@ MAX/
 │   ├── filesystem/             # Search, read, write, trash, metadata
 │   ├── applications/           # Discovery, launch, activation, process tracking
 │   ├── macos/                  # Clipboard, notifications, spotlight, defaults
-│   └── developer/              # Git status, project stacks, listening ports
+│   ├── developer/              # Git status, project stacks, listening ports
+│   ├── vision/                 # Vision fallback & screen targets
+│   └── tasks/                  # Background tasks, processes, and event monitors
+├── tasks/
+│   ├── models.py               # TaskState, TaskType, ManagedTask
+│   ├── persistence.py          # SQLite persistence & orphan recovery
+│   ├── supervisor.py           # Process group launcher & log streamer
+│   ├── watchers.py             # DirectoryWatcher & PortWatcher
+│   └── manager.py              # Central TaskManager singleton
+├── event_engine/
+│   ├── events.py               # Typed event schemas
+│   └── bus.py                  # Thread-safe EventBus & wait_for
+├── vision/                     # Local screen capture, VLM analysis & click execution
 ├── security/
 │   ├── risk.py                 # Dynamic risk classification engine
 │   ├── policy.py               # Policy enforcement
@@ -49,7 +61,7 @@ MAX/
 ├── macos/
 │   ├── shell.py                # Subprocess runner with timeout
 │   └── applescript.py          # AppleScript runner with error code translation
-└── tests/                      # Automated test suite
+└── tests/                      # Automated test suite (50+ unit and live tests)
 ```
 
 ---

@@ -14,6 +14,7 @@ import urllib.request
 from app.config import settings
 from macos.shell import run_shell_command
 from security.permissions import check_macos_permissions, PermissionReport
+from tasks.manager import task_manager
 
 
 class ToolStatus(BaseModel):
@@ -39,6 +40,8 @@ class SystemDiagnostics(BaseModel):
     ollama_models: list[str]
     permissions: list[PermissionReport]
     tools: dict[str, ToolStatus]
+    active_tasks_count: int = 0
+    tasks_log_dir: str = ""
 
 
 def get_tool_version(tool_name: str, path: str) -> str | None:
@@ -150,4 +153,6 @@ def run_system_diagnostics() -> SystemDiagnostics:
         ollama_models=ollama_models,
         permissions=permissions,
         tools=tools_status,
+        active_tasks_count=len([t for t in task_manager.list_tasks() if t.is_active]),
+        tasks_log_dir=str(settings.base_dir / "logs" / "tasks"),
     )

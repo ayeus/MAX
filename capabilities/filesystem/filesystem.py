@@ -11,7 +11,7 @@ from security.risk import RiskLevel, assess_path_risk
 from security.policy import SecurityPolicy, PolicyViolation
 from security.confirmation import request_user_confirmation
 from security.audit import audit_log
-from macos.applescript import run_applescript
+from macos.applescript import run_applescript, escape_applescript_string
 
 
 class FilesystemCapability(Capability):
@@ -286,6 +286,18 @@ class FilesystemCapability(Capability):
         src = Path(source).expanduser().resolve()
         dst = Path(destination).expanduser().resolve()
 
+        # Policy checks for both source and destination
+        try:
+            self.policy.evaluate_path_access(str(src), is_destructive=True)
+            self.policy.evaluate_path_access(str(dst), is_destructive=True)
+        except PolicyViolation as pv:
+            return ExecutionResult(
+                success=False,
+                capability=self.name,
+                action="move_file",
+                error=str(pv),
+            )
+
         if not src.exists():
             return ExecutionResult(
                 success=False,
@@ -352,8 +364,9 @@ class FilesystemCapability(Capability):
                 error="Cancelled by user.",
             )
 
-        # Use macOS Finder AppleScript to send to Trash reversibly
-        as_script = f'tell application "Finder" to delete POSIX file "{target}"'
+        # Use macOS Finder AppleScript to send to Trash reversibly with escaped path
+        escaped_target = escape_applescript_string(str(target))
+        as_script = f'tell application "Finder" to delete POSIX file "{escaped_target}"'
         res = run_applescript(as_script)
 
         # Verification: check if target is gone from original location

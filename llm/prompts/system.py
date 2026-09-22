@@ -23,7 +23,7 @@ You MUST respond with a valid JSON object matching this schema:
   "plan": [
     {
       "step_number": 1,
-      "capability": "terminal | filesystem | applications | macos | developer",
+      "capability": "terminal | filesystem | applications | macos | accessibility | vision | browser | developer | tasks",
       "action": "name of the operation in the capability",
       "args": {
         "arg_name": "arg_value"
@@ -35,6 +35,8 @@ You MUST respond with a valid JSON object matching this schema:
 }
 
 CRITICAL RULES:
+- When the user asks to perform an action inside an application (e.g. type, click, search, write), use the accessibility capability to locate controls and interact with them.
+- TYPE != SEND: Typing or drafting text into an application does NOT mean sending/submitting. Only submit or press return if the user explicitly requested it.
 - Never assume a tool or application exists without checking or using discoverable capabilities.
 - When finding files or diagnosing issues, use general inspection tools (e.g. terminal find/ls/grep or filesystem operations).
 - Keep plans minimal and focused on achieving the user's specific outcome.

@@ -17,6 +17,8 @@ MAX is **NOT** a limited voice assistant with a hardcoded command catalogue. It 
   - `applications`: Dynamic discovery across `/Applications`, launch, activation, process tracking.
   - `macos`: System clipboard (`pbcopy`/`pbpaste`), Spotlight (`mdfind`), desktop notifications, system settings (`defaults`).
   - `developer`: Git status, project stack detection (Node, Python, Go, Rust, Java, Docker), and listening ports (`lsof`).
+  - `vision`: Local vision-language screen understanding and fallback using Ollama multimodal models.
+  - `tasks`: Long-running background processes, daemons, process group supervision (`start_new_session=True`), safe process tree cleanup (`os.killpg`), SQLite persistence (`managed_tasks`), startup orphan reconciliation, filesystem watchers (`DirectoryWatcher`), port monitors (`PortWatcher`), and thread-safe `EventBus` with deterministic waiting.
 - **Deep Security Subsystem**:
   - Dynamic risk classification (`SAFE`, `LOW`, `MEDIUM`, `HIGH`, `BLOCKED`).
   - Catastrophic operations (e.g. wiping `/` or `~`) are blocked unconditionally.
@@ -59,6 +61,34 @@ Manage explicit user memories and preferences stored in SQLite (`~/.max/memory.d
 ./bin/max memory remember --key editor --value "VS Code"
 ./bin/max memory list
 ```
+
+### 5. Background Tasks & Process Management
+Manage long-running background tasks, view stdout/stderr streaming logs, and terminate process trees:
+```bash
+# List all managed tasks
+./bin/max task list
+
+# Inspect detailed status of a task
+./bin/max task status <task_id>
+
+# View real bounded stdout/stderr logs
+./bin/max task logs <task_id> --lines 50
+
+# Terminate task and entire process group safely
+./bin/max task kill <task_id>
+```
+
+### 6. Hands-Free Voice Assistant ("Max")
+Activate continuous hands-free voice control. Just say **"Max"** or **"Hey Max"**:
+```bash
+# Start continuous wake-word listening loop
+./bin/max listen
+
+# Push-to-talk voice command (with dynamic Voice Activity Detection)
+./bin/max voice
+```
+- **Two-stage interaction**: Call *"Max!"* -> MAX responds: *"Yes, I'm listening."* -> speak any computer task -> MAX executes it autonomously and speaks the outcome.
+- **One-shot interaction**: Call *"Max, open Google Chrome and search for React docs"* -> MAX immediately begins execution.
 
 ---
 

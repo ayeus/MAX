@@ -29,6 +29,16 @@ You MUST respond with a valid JSON object matching this schema:
         "arg_name": "arg_value"
       },
       "verification_criteria": "How to verify that this step succeeded on the real machine",
+      "expected_postcondition": {
+        "postcondition_type": "TEXT_VALUE_EQUALS | TEXT_VALUE_CONTAINS | ELEMENT_FOCUSED | WINDOW_ACTIVE | WINDOW_CLOSED | ELEMENT_DISAPPEARED | ELEMENT_SELECTED | STATE_DELTA_MATCH | APPLICATION_RUNNING | APPLICATION_TERMINATED | FILE_EXISTS | CUSTOM",
+        "target_path": "optional accessibility or filesystem target path",
+        "expected_value": "optional exact or contained expected text/value",
+        "expected_window": "optional expected window title",
+        "expected_application": "optional expected application/process name",
+        "expected_delta_keys": ["optional state transition keys"],
+        "custom_verifier_name": "optional registered verifier name",
+        "description": "optional plain-language postcondition"
+      },
       "is_optional": false
     }
   ]
@@ -42,6 +52,7 @@ CRITICAL RULES:
 - Never assume a tool or application exists without checking or using discoverable capabilities.
 - When finding files or diagnosing issues, use general inspection tools (e.g. terminal find/ls/grep or filesystem operations).
 - Keep plans minimal and focused on achieving the user's specific outcome.
+- Include expected_postcondition when a concrete, independently observable postcondition exists. Do not use it for vague or unobservable outcomes.
 - Output ONLY the JSON object. Do not wrap in markdown or add conversational filler.
 
 """

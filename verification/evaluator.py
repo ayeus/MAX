@@ -303,18 +303,11 @@ class GoalEvaluator:
                             evidence={"path": str(p), "size_bytes": sz, "content_verified": True},
                             observer_source="filesystem",
                         )
-                    except (FileNotFoundError, OSError):
-                        if sz == len(expected_content.encode("utf-8")):
-                            return VerificationResult(
-                                status=GoalStatus.SATISFIED,
-                                explanation=f"File '{p}' verified on disk ({sz} bytes).",
-                                evidence={"path": str(p), "size_bytes": sz},
-                                observer_source="filesystem",
-                            )
+                    except (FileNotFoundError, OSError) as exc:
                         return VerificationResult(
-                            status=GoalStatus.UNSATISFIED,
-                            explanation=f"File '{p}' could not be read to verify content.",
-                            evidence={"path": str(p)},
+                            status=GoalStatus.UNKNOWN,
+                            explanation=f"File '{p}' exists, but content could not be read to verify the requested payload.",
+                            evidence={"path": str(p), "size_bytes": sz, "read_error": str(exc)},
                             observer_source="filesystem",
                         )
 

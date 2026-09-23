@@ -45,6 +45,25 @@ class Plan(BaseModel):
     unsupported_operations: list[str] = Field(default_factory=list)
 
 
+def _parse_expected_postcondition(raw: Any) -> Optional[ExpectedPostcondition]:
+    """Parse an LLM-supplied postcondition without making planning brittle."""
+    if raw is None:
+        return None
+    if isinstance(raw, ExpectedPostcondition):
+        return raw
+    if not isinstance(raw, dict):
+        logger.warning("Ignoring malformed expected_postcondition: %r", raw)
+        return None
+    try:
+        validator = getattr(ExpectedPostcondition, "model_validate", None)
+        if validator:
+            return validator(raw)
+        return ExpectedPostcondition.parse_obj(raw)
+    except Exception as exc:
+        logger.warning("Ignoring invalid expected_postcondition %r: %s", raw, exc)
+        return None
+
+
 def clean_json_response(raw_text: str) -> str:
     """Extract raw JSON from model output, stripping markdown code fences if present."""
     text = raw_text.strip()
@@ -158,6 +177,7 @@ class Planner:
                         args=s.get("args", {}) if isinstance(s.get("args"), dict) else {},
                         verification_criteria=str(s.get("verification_criteria", "")),
                         is_optional=bool(s.get("is_optional", False)),
+                        expected_postcondition=_parse_expected_postcondition(s.get("expected_postcondition")),
                     ))
                 elif isinstance(s, str):
                     steps.append(PlanStep(
@@ -217,4 +237,3 @@ class Planner:
                 status=PlannerStatus.INVALID,
                 rejection_reason=f"Planning exception: {e}",
             )
-

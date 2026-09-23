@@ -21,7 +21,7 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from agent.core import AgentCore, StepExecutionRecord
 from agent.observer import EnvironmentObservation
@@ -251,6 +251,31 @@ class TestPhase11Verification(unittest.TestCase):
         v = self.evaluator.evaluate_step(step, res, self.obs)
         self.assertEqual(v.status, GoalStatus.UNSATISFIED)
         self.assertIn("content mismatch", v.explanation.lower())
+
+    def test_write_file_expected_content_unreadable_is_unknown(self):
+        """A same-size file is not proof of requested content if content cannot be read."""
+        target = self.temp_dir / "unreadable_same_size.txt"
+        target.write_bytes(b"HELLO")
+
+        step = PlanStep(
+            step_number=1,
+            capability="filesystem",
+            action="write_file",
+            args={"path": str(target), "content": "HELLO"},
+            is_optional=False,
+        )
+        res = ExecutionResult(
+            success=True,
+            capability="filesystem",
+            action="write_file",
+            data={"path": str(target), "bytes_written": 5},
+        )
+
+        with patch("pathlib.Path.read_text", side_effect=OSError("permission denied")):
+            v = self.evaluator.evaluate_step(step, res, self.obs)
+
+        self.assertEqual(v.status, GoalStatus.UNKNOWN)
+        self.assertIn("could not be read", v.explanation.lower())
 
     # =========================================================================
     # Test 7: Move file -> source absent, destination present -> SATISFIED

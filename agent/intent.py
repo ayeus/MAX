@@ -35,7 +35,24 @@ class IntentResolver:
             return None
 
         # 1. Brightness adjustments
-        if intent == "increase_brightness":
+        if intent == "set_brightness":
+            if registry.is_operation_supported("macos", "set_brightness"):
+                level = interp.parameters.get("level", 0.5)
+                return Plan(
+                    thought=f"Setting display brightness to {level:.2f} via native macOS DisplayServices.",
+                    plan=[
+                        PlanStep(
+                            step_number=1,
+                            capability="macos",
+                            action="set_brightness",
+                            args={"level": level},
+                            verification_criteria=f"Display brightness verified at {level:.2f} in OS state",
+                            is_optional=False,
+                        )
+                    ],
+                )
+
+        elif intent == "increase_brightness":
             if registry.is_operation_supported("macos", "increase_brightness"):
                 delta = interp.parameters.get("delta", 0.1)
                 return Plan(
@@ -117,6 +134,24 @@ class IntentResolver:
                             action="send_key_chord",
                             args={"key": "w", "modifiers": "command"},
                             verification_criteria="Active window closed",
+                            is_optional=False,
+                        )
+                    ],
+                )
+
+        # 5. Terminal Command Execution
+        elif intent == "execute_command" and interp.parameters.get("command"):
+            cmd = interp.parameters.get("command")
+            if registry.is_operation_supported("terminal", "execute_command"):
+                return Plan(
+                    thought=f"Executing terminal command: {cmd}",
+                    plan=[
+                        PlanStep(
+                            step_number=1,
+                            capability="terminal",
+                            action="execute_command",
+                            args={"command": cmd},
+                            verification_criteria="Shell command completed with exit code 0",
                             is_optional=False,
                         )
                     ],

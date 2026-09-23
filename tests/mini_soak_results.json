@@ -1,26 +1,50 @@
 {
   "soak_mode": "MINI_SOAK",
   "total_commands": 5,
-  "succeeded": 4,
-  "unsatisfied": 1,
-  "unknown": 0,
+  "succeeded": 1,
+  "unsatisfied": 3,
+  "unknown": 1,
   "failed": 0,
   "dropped_commands": 0,
   "recovery_events": 0,
-  "initial_rss_mb": 54.36,
-  "final_rss_mb": 38.45,
-  "peak_rss_mb": 54.36,
-  "rss_growth_mb": -15.91,
-  "avg_latency_ms": 6656.57,
-  "deterministic_verifications": 6,
+  "initial_rss_mb": 88.23,
+  "final_rss_mb": 31.31,
+  "peak_rss_mb": 88.23,
+  "rss_growth_mb": -56.92,
+  "avg_latency_ms": 7252.02,
+  "deterministic_verifications": 2,
   "vision_verifications": 0,
   "commands": [
     {
       "index": 1,
       "command": "Check macOS version",
+      "status": "UNSUPPORTED",
+      "duration_ms": 5627.607107162476,
+      "memory_rss_mb": 47.453125,
+      "steps_count": 0,
+      "evaluation": "Required operation(s) ['system.get_system_info'] are not supported by the capability registry.",
+      "verification_evidence": [],
+      "failure_classification": "MAX_DEFECT",
+      "classification_reason": "Command failed to satisfy objective: Required operation(s) ['system.get_system_info'] are not supported by the capability registry."
+    },
+    {
+      "index": 2,
+      "command": "Check system uptime",
+      "status": "UNSATISFIED",
+      "duration_ms": 5894.540071487427,
+      "memory_rss_mb": 54.171875,
+      "steps_count": 0,
+      "evaluation": "No executable steps generated.",
+      "verification_evidence": [],
+      "failure_classification": "ENVIRONMENTAL",
+      "classification_reason": "Environmental availability condition: No executable steps generated."
+    },
+    {
+      "index": 3,
+      "command": "Check current user and machine hostname",
       "status": "SATISFIED",
-      "duration_ms": 6489.3786907196045,
-      "memory_rss_mb": 53.984375,
+      "duration_ms": 5387.805938720703,
+      "memory_rss_mb": 57.8125,
       "steps_count": 1,
       "evaluation": "All planned steps executed and verified successfully.",
       "verification_evidence": [
@@ -28,46 +52,6 @@
           "step": "terminal.execute_command",
           "status": "SATISFIED",
           "explanation": "Shell command completed with exit code 0."
-        }
-      ],
-      "failure_classification": null,
-      "classification_reason": null
-    },
-    {
-      "index": 2,
-      "command": "Check system uptime",
-      "status": "UNSATISFIED",
-      "duration_ms": 6331.897735595703,
-      "memory_rss_mb": 27.8125,
-      "steps_count": 0,
-      "evaluation": "The user wants to check the system uptime. This can be achieved by checking the system's uptime information.",
-      "verification_evidence": [],
-      "failure_classification": "ENVIRONMENTAL",
-      "classification_reason": "Environmental availability condition: The user wants to check the system uptime. This can be achieved by checking the system's uptime information."
-    },
-    {
-      "index": 3,
-      "command": "Check current user and machine hostname",
-      "status": "SATISFIED",
-      "duration_ms": 7754.407167434692,
-      "memory_rss_mb": 41.625,
-      "steps_count": 3,
-      "evaluation": "All planned steps executed and verified successfully.",
-      "verification_evidence": [
-        {
-          "step": "accessibility.get_computer_state",
-          "status": "SATISFIED",
-          "explanation": "Accessibility inspection 'get_computer_state' successfully retrieved UI state."
-        },
-        {
-          "step": "filesystem.read_file",
-          "status": "UNSATISFIED",
-          "explanation": "Action 'filesystem.read_file' failed: File '/private/etc/hostname' does not exist or is not a regular file."
-        },
-        {
-          "step": "macos.spotlight_search",
-          "status": "SATISFIED",
-          "explanation": "macOS system inspection 'spotlight_search' successfully retrieved data."
         }
       ],
       "failure_classification": null,
@@ -76,38 +60,32 @@
     {
       "index": 4,
       "command": "List files in /tmp directory",
-      "status": "SATISFIED",
-      "duration_ms": 5713.145971298218,
-      "memory_rss_mb": 36.6875,
+      "status": "UNKNOWN",
+      "duration_ms": 11572.324752807617,
+      "memory_rss_mb": 59.328125,
       "steps_count": 1,
-      "evaluation": "All planned steps executed and verified successfully.",
+      "evaluation": "Cannot verify outcome for step 'tasks.execute_command': No explicit verification is implemented for 'tasks.execute_command'.",
       "verification_evidence": [
         {
-          "step": "terminal.execute_command",
-          "status": "SATISFIED",
-          "explanation": "Shell command completed with exit code 0."
+          "step": "tasks.execute_command",
+          "status": "UNKNOWN",
+          "explanation": "No explicit verification is implemented for 'tasks.execute_command'."
         }
       ],
-      "failure_classification": null,
-      "classification_reason": null
+      "failure_classification": "UNKNOWN / NEEDS_REVIEW",
+      "classification_reason": "Outcome inconclusive: Cannot verify outcome for step 'tasks.execute_command': No explicit verification is implemented for 'tasks.execute_command'."
     },
     {
       "index": 5,
       "command": "Check if /tmp directory exists",
-      "status": "SATISFIED",
-      "duration_ms": 6994.0009117126465,
-      "memory_rss_mb": 38.421875,
-      "steps_count": 1,
-      "evaluation": "All planned steps executed and verified successfully.",
-      "verification_evidence": [
-        {
-          "step": "terminal.execute_command",
-          "status": "SATISFIED",
-          "explanation": "Shell command completed with exit code 0."
-        }
-      ],
-      "failure_classification": null,
-      "classification_reason": null
+      "status": "UNSATISFIED",
+      "duration_ms": 7777.841806411743,
+      "memory_rss_mb": 30.6875,
+      "steps_count": 0,
+      "evaluation": "No executable steps generated.",
+      "verification_evidence": [],
+      "failure_classification": "MAX_DEFECT",
+      "classification_reason": "Command failed to satisfy objective: No executable steps generated."
     }
   ]
 }

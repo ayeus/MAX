@@ -68,6 +68,19 @@ class SpeechNormalizer:
 
     # 4. Semantic Intent Patterns
     # Brightness adjustment
+    BRIGHTNESS_TARGET_PATTERNS = [
+        re.compile(
+            r"\b(?:set|turn|make|change|adjust|increase|raise|boost|decrease|lower|reduce|dim|drop)?\s*"
+            r"(?:(?:the|my|screen|display)\s+)*brightness\s+"
+            r"(?:to|at|=)?\s*(\d+(?:\.\d+)?)\s*(%|percent)?\b",
+            re.IGNORECASE,
+        ),
+        re.compile(
+            r"\b(?:set|make|turn)\s+(?:(?:the|my)\s+)?(?:screen|display)\s+(?:to|at)?\s*(\d+(?:\.\d+)?)\s*(%|percent)?\s*(?:brightness)?\b",
+            re.IGNORECASE,
+        ),
+    ]
+
     BRIGHTNESS_INCREASE_PATTERNS = [
         re.compile(r"\b(?:increase|raise|boost|bump\s+up|turn\s+up)\s+(?:(?:the|my|screen|display)\s+)*brightness\b", re.IGNORECASE),
         re.compile(r"\b(?:make|turn)\s+(?:(?:the|my)\s+)?(?:screen|display)\s+(?:a\s+(?:little|bit)\s+)?brighter\b", re.IGNORECASE),
@@ -82,6 +95,12 @@ class SpeechNormalizer:
         re.compile(r"\bturn\s+(?:(?:the|my|screen|display)\s+)*brightness\s+down\b", re.IGNORECASE),
     ]
 
+
+    # Terminal command execution
+    TERMINAL_COMMAND_PATTERNS = [
+        re.compile(r"^(?:run|execute)\s+(?:terminal\s+|shell\s+|bash\s+)?command:?\s*(.+)$", re.IGNORECASE),
+        re.compile(r"^(?:run|execute)\s+in\s+terminal:?\s*(.+)$", re.IGNORECASE),
+    ]
 
     # Application launching
     APP_LAUNCH_PATTERNS = [
@@ -191,13 +210,27 @@ class SpeechNormalizer:
         ambiguity_reason: Optional[str] = None
         clarification_prompt: Optional[str] = None
 
-        # Check Brightness Increase
-        for pat in self.BRIGHTNESS_INCREASE_PATTERNS:
-            if pat.search(normalized):
-                intent = "increase_brightness"
+        # Check Brightness Target Level (Invariant 8: Target level vs delta)
+        for pat in self.BRIGHTNESS_TARGET_PATTERNS:
+            m = pat.search(normalized)
+            if m:
+                raw_val = float(m.group(1))
+                unit = (m.group(2) or "").strip().lower()
+                is_pct = unit in ("%", "percent") or raw_val > 1.0
+                target_level = max(0.0, min(1.0, raw_val / 100.0 if is_pct else raw_val))
+                intent = "set_brightness"
                 target = "display"
-                params = {"delta": 0.1}
+                params = {"level": target_level}
                 break
+
+        # Check Brightness Increase
+        if not intent:
+            for pat in self.BRIGHTNESS_INCREASE_PATTERNS:
+                if pat.search(normalized):
+                    intent = "increase_brightness"
+                    target = "display"
+                    params = {"delta": 0.1}
+                    break
 
         # Check Brightness Decrease
         if not intent:
@@ -213,6 +246,17 @@ class SpeechNormalizer:
             if re.search(r"\bclose\s+(?:this|current|active|the)\s+window\b", normalized, re.IGNORECASE):
                 intent = "close_window"
                 target = "front_window"
+
+        # Check Terminal Command Execution
+        if not intent:
+            for pat in self.TERMINAL_COMMAND_PATTERNS:
+                m = pat.match(normalized)
+                if m:
+                    raw_cmd = m.group(1).strip()
+                    intent = "execute_command"
+                    target = "terminal"
+                    params = {"command": raw_cmd}
+                    break
 
         # Check App Launching
         if not intent:

@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from .observer import observer, AgentObservation, ObservationTier
 from .context import assemble_context, AgentContext
-from .planner import Planner, Plan, PlanStep
+from .planner import Planner, Plan, PlanStep, PlannerStatus
 from .executor import Executor
 from .replanner import Replanner
 from .goal import Goal, Subgoal, SubgoalStatus, ActionIntent, ExpectedPostcondition, PostconditionType, TargetReference
@@ -117,57 +117,48 @@ class AgentCore:
                 latency_report=latency_tracker.current,
             )
 
-        # If planner failed or returned no steps
-        if not plan.plan:
-            thought_l = (plan.thought or "").lower()
-            is_unsupported = any(
-                w in thought_l
-                for w in (
-                    "not supported", "cannot perform", "can't perform", "unsupported",
-                    "no registered capability", "don't have a supported", "not have a supported"
-                )
+        # If planner failed or returned no steps, evaluate structured PlannerStatus
+        if plan.status == PlannerStatus.UNSUPPORTED:
+            self.state = AgentState.UNSUPPORTED
+            goal_eval = GoalEvaluation(
+                status=GoalStatus.UNSUPPORTED,
+                explanation=plan.rejection_reason or plan.thought or f"I don't have a supported capability to perform '{user_request}'.",
+            )
+            trace.final_status = "UNSUPPORTED"
+            latency_tracker.mark_completion()
+            return AgentExecutionReport(
+                user_request=user_request,
+                thought=plan.thought,
+                steps_executed=[],
+                final_summary=f"Goal: {user_request}\nStatus: UNSUPPORTED\n\n{goal_eval.explanation}",
+                state=self.state,
+                goal_evaluation=goal_eval,
+                overall_success=False,
+                limitations=[goal_eval.explanation],
+                trace=trace,
+                latency_report=latency_tracker.current,
             )
 
-            if is_unsupported:
-                self.state = AgentState.UNSUPPORTED
-                goal_eval = GoalEvaluation(
-                    status=GoalStatus.UNSUPPORTED,
-                    explanation=plan.thought or f"I don't have a supported capability to perform '{user_request}'.",
-                )
-                trace.final_status = "UNSUPPORTED"
-                latency_tracker.mark_completion()
-                return AgentExecutionReport(
-                    user_request=user_request,
-                    thought=plan.thought,
-                    steps_executed=[],
-                    final_summary=f"Goal: {user_request}\nStatus: UNSUPPORTED\n\n{goal_eval.explanation}",
-                    state=self.state,
-                    goal_evaluation=goal_eval,
-                    overall_success=False,
-                    limitations=[goal_eval.explanation],
-                    trace=trace,
-                    latency_report=latency_tracker.current,
-                )
-            else:
-                self.state = AgentState.FAILED
-                goal_eval = GoalEvaluation(
-                    status=GoalStatus.UNSATISFIED,
-                    explanation=plan.thought or f"Unable to formulate plan for '{user_request}'",
-                )
-                trace.final_status = "FAILED"
-                latency_tracker.mark_completion()
-                return AgentExecutionReport(
-                    user_request=user_request,
-                    thought=plan.thought,
-                    steps_executed=[],
-                    final_summary=f"Goal: {user_request}\nStatus: UNSATISFIED (State: FAILED)\n\nGoal Evaluation: {goal_eval.explanation}",
-                    state=self.state,
-                    goal_evaluation=goal_eval,
-                    overall_success=False,
-                    limitations=["Planner produced no executable steps."],
-                    trace=trace,
-                    latency_report=latency_tracker.current,
-                )
+        if not plan.plan or plan.status in (PlannerStatus.INVALID, PlannerStatus.AMBIGUOUS):
+            self.state = AgentState.FAILED
+            goal_eval = GoalEvaluation(
+                status=GoalStatus.UNSATISFIED,
+                explanation=plan.rejection_reason or plan.thought or f"Unable to formulate plan for '{user_request}'",
+            )
+            trace.final_status = "FAILED"
+            latency_tracker.mark_completion()
+            return AgentExecutionReport(
+                user_request=user_request,
+                thought=plan.thought,
+                steps_executed=[],
+                final_summary=f"Goal: {user_request}\nStatus: UNSATISFIED (State: FAILED)\n\nGoal Evaluation: {goal_eval.explanation}",
+                state=self.state,
+                goal_evaluation=goal_eval,
+                overall_success=False,
+                limitations=[plan.rejection_reason or "Planner produced no executable steps."],
+                trace=trace,
+                latency_report=latency_tracker.current,
+            )
 
         executed_records: list[StepExecutionRecord] = []
         limitations: list[str] = []
@@ -320,11 +311,6 @@ class AgentCore:
                 last_observation=post_obs,
             )
 
-            # If goal is satisfied, terminate immediately
-            if goal_eval.status == GoalStatus.SATISFIED:
-                self.state = AgentState.DONE
-                break
-
             # Handle step failure or unsatisfied verification -> State-Driven Replanning
             if step_verif.status != GoalStatus.SATISFIED and not step.is_optional:
                 if replan_count < max_replans:
@@ -339,6 +325,9 @@ class AgentCore:
                     )
                     if recovery_step:
                         trace.items[-1].replan_reason = f"Recovery scheduled: {recovery_step.capability}.{recovery_step.action}"
+                        # Invariant 4 & 5: Recovery success != original goal success.
+                        # Preserve original user goal: re-queue failed step to be retried after recovery action!
+                        steps_queue.insert(0, step)
                         steps_queue.insert(0, recovery_step)
                     else:
                         limitations.append(f"Step {step.step_number} ({step.capability}.{step.action}): {step_verif.explanation}")
@@ -346,6 +335,14 @@ class AgentCore:
                     limitations.append(f"Exceeded maximum replan limit ({max_replans}) on step {step.step_number}.")
                     self.state = AgentState.FAILED
                     break
+            elif step_verif.status != GoalStatus.SATISFIED and step.is_optional:
+                # Invariant 7: Optional step failure must not fail overall goal, but must be in trace and limitations
+                limitations.append(f"Optional step {step.step_number} ({step.capability}.{step.action}) was not satisfied: {step_verif.explanation}")
+
+            # If goal is satisfied and all planned steps have been executed, terminate
+            if not steps_queue and goal_eval.status == GoalStatus.SATISFIED:
+                self.state = AgentState.DONE
+                break
 
         # Final state resolution
         if self._cancel_event.is_set():

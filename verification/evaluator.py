@@ -678,31 +678,60 @@ class GoalEvaluator:
                 explanation="No steps have been executed yet.",
             )
 
-        # Check for unrecovered failures: a step failure is considered recovered if subsequent steps
-        # successfully executed and the latest step in the trajectory succeeded
+        # Invariants 1, 3, 4: Compositional evaluation of all executed mandatory steps.
+        # A failed mandatory step is ONLY considered recovered if THAT EXACT requirement
+        # was subsequently retried and independently verified SATISFIED.
+        # An unrelated recovery step (e.g. clicking fallback coordinates, listing apps)
+        # does NOT satisfy the original mandatory goal.
         unrecovered_failures = []
         for i, r in enumerate(steps_executed):
-            if not r.step.is_optional and r.verification.status != GoalStatus.SATISFIED:
-                later_successes = [
-                    later for later in steps_executed[i+1:]
-                    if later.verification.status == GoalStatus.SATISFIED
-                ]
-                if not later_successes or steps_executed[-1].verification.status != GoalStatus.SATISFIED:
-                    unrecovered_failures.append(r)
+            if r.step.is_optional or r.verification.status == GoalStatus.SATISFIED:
+                continue
+
+            # Look for subsequent retry of this exact requirement
+            subsequent_retries = [
+                later for later in steps_executed[i+1:]
+                if (
+                    later.step.step_number == r.step.step_number or
+                    (
+                        later.step.capability == r.step.capability and
+                        later.step.action == r.step.action and
+                        later.step.args == r.step.args
+                    )
+                )
+            ]
+
+            if not subsequent_retries or subsequent_retries[-1].verification.status != GoalStatus.SATISFIED:
+                unrecovered_failures.append(r)
 
         if unrecovered_failures:
-            last_failed = unrecovered_failures[-1]
-            if last_failed.verification.status == GoalStatus.UNKNOWN:
+            # Composition hierarchy (Invariant 3 & Test E): UNSUPPORTED > UNSATISFIED > UNKNOWN
+            unsupported = [f for f in unrecovered_failures if f.verification.status == GoalStatus.UNSUPPORTED]
+            if unsupported:
+                failed = unsupported[-1]
+                return GoalEvaluation(
+                    status=GoalStatus.UNSUPPORTED,
+                    explanation=f"Required step '{failed.step.capability}.{failed.step.action}' is unsupported: {failed.verification.explanation}",
+                    evidence=failed.verification.evidence,
+                )
+
+            unsatisfied = [f for f in unrecovered_failures if f.verification.status == GoalStatus.UNSATISFIED]
+            if unsatisfied:
+                failed = unsatisfied[-1]
+                return GoalEvaluation(
+                    status=GoalStatus.UNSATISFIED,
+                    explanation=f"Required step '{failed.step.capability}.{failed.step.action}' was not satisfied: {failed.verification.explanation}",
+                    evidence=failed.verification.evidence,
+                )
+
+            unknown = [f for f in unrecovered_failures if f.verification.status == GoalStatus.UNKNOWN]
+            if unknown:
+                failed = unknown[-1]
                 return GoalEvaluation(
                     status=GoalStatus.UNKNOWN,
-                    explanation=f"Cannot verify outcome for step '{last_failed.step.capability}.{last_failed.step.action}': {last_failed.verification.explanation}",
-                    evidence=last_failed.verification.evidence,
+                    explanation=f"Cannot verify outcome for step '{failed.step.capability}.{failed.step.action}': {failed.verification.explanation}",
+                    evidence=failed.verification.evidence,
                 )
-            return GoalEvaluation(
-                status=GoalStatus.UNSATISFIED,
-                explanation=f"Required step '{last_failed.step.capability}.{last_failed.step.action}' was not satisfied: {last_failed.verification.explanation}",
-                evidence=last_failed.verification.evidence,
-            )
 
         # If there are still planned non-optional steps remaining in the queue
         mandatory_remaining = [s for s in remaining_steps if not s.is_optional]

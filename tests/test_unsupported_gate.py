@@ -51,9 +51,9 @@ class TestUnsupportedGate(unittest.TestCase):
 
     @patch("agent.planner.model_manager")
     def test_planner_rejects_hallucinated_unregistered_operations(self, mock_mm):
-        """[MOCKED] Planner filters out hallucinated operations not present in CapabilityRegistry."""
+        """[MOCKED] Invariant 5: Planner atomically rejects plans containing unregistered mandatory operations."""
         mock_provider = MagicMock()
-        # Simulate an LLM that outputs a fabricated unregistered capability
+        # Simulate an LLM that outputs a fabricated unregistered capability alongside a valid one
         mock_response = MagicMock()
         mock_response.content = (
             '{"thought": "Adjusting refresh rate", "plan": ['
@@ -67,11 +67,34 @@ class TestUnsupportedGate(unittest.TestCase):
         # Bypass fast-path so mock LLM is called
         plan = planner.create_plan("Configure extreme monitor settings", self.context)
 
-        # 'display_hardware.set_refresh_rate' is NOT registered, so it must be stripped
+        # Invariant 5: 'display_hardware.set_refresh_rate' is NOT registered and mandatory.
+        # The entire plan must be atomically rejected with PlannerStatus.UNSUPPORTED and 0 steps.
+        from agent.planner import PlannerStatus
+        self.assertEqual(plan.status, PlannerStatus.UNSUPPORTED)
+        self.assertEqual(len(plan.plan), 0)
+        self.assertIn("display_hardware.set_refresh_rate", plan.unsupported_operations)
+
+    @patch("agent.planner.model_manager")
+    def test_planner_omits_unregistered_optional_steps_preserving_mandatory(self, mock_mm):
+        """[MOCKED] Invariant 7: Planner omits unsupported optional steps while preserving valid mandatory steps."""
+        mock_provider = MagicMock()
+        mock_response = MagicMock()
+        mock_response.content = (
+            '{"thought": "Showing notification with optional hardware telemetry", "plan": ['
+            '{"capability": "macos", "action": "show_notification", "args": {"message": "Done"}, "is_optional": false},'
+            '{"capability": "display_hardware", "action": "read_telemetry", "args": {}, "is_optional": true}'
+            ']}'
+        )
+        mock_provider.generate.return_value = mock_response
+        planner = Planner(provider=mock_provider)
+
+        plan = planner.create_plan("Notify me with optional telemetry", self.context)
+
+        from agent.planner import PlannerStatus
+        self.assertEqual(plan.status, PlannerStatus.VALID)
         actions = [f"{s.capability}.{s.action}" for s in plan.plan]
-        self.assertNotIn("display_hardware.set_refresh_rate", actions)
-        # 'macos.show_notification' IS registered, so it remains valid
         self.assertIn("macos.show_notification", actions)
+        self.assertNotIn("display_hardware.read_telemetry", actions)
 
     def test_agent_core_unsupported_lifecycle(self):
         """[INTEGRATION] AgentCore must cleanly transition to UNSUPPORTED state with 0 false successes."""

@@ -4,6 +4,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 import os
 import time
+import threading
 
 from voice.assistant import VoiceAssistant, VoiceState, is_cancel_command
 from voice.tts import speak_async, stop_speaking, play_earcon
@@ -49,9 +50,10 @@ class TestVoiceReliability(unittest.TestCase):
     def test_earcon_valid_system_sound(self):
         """Verify play_earcon works with standard macOS system sound if present."""
         system_sound = "/System/Library/Sounds/Tink.aiff"
-        if os.path.exists(system_sound):
-            res = play_earcon(system_sound)
-            self.assertTrue(res)
+        if not os.path.exists(system_sound):
+            self.skipTest("Required macOS system sound unavailable")
+        res = play_earcon(system_sound)
+        self.assertTrue(res)
 
     def test_voice_assistant_watchdog_triggers_on_stuck_state(self):
         """Verify watchdog detects stuck state and recovers to IDLE."""
@@ -78,14 +80,33 @@ class TestVoiceReliability(unittest.TestCase):
         """Verify speak_async starts without blocking and stop_speaking terminates it."""
         with patch("subprocess.Popen") as mock_popen:
             mock_proc = MagicMock()
+            stop_event = threading.Event()
+
+            def slow_communicate(*args, **kwargs):
+                stop_event.wait(timeout=2.0)
+                return ("", "")
+
+            mock_proc.communicate.side_effect = slow_communicate
+            def mock_terminate():
+                stop_event.set()
+            mock_proc.terminate.side_effect = mock_terminate
+            mock_proc.kill.side_effect = mock_terminate
             mock_popen.return_value = mock_proc
-            
+
             thread = speak_async("Hello world from async speech test")
             self.assertIsNotNone(thread)
-            
-            # Now call stop_speaking
+
+            # Wait briefly for thread to spawn subprocess and enter communicate
+            time.sleep(0.05)
+            self.assertTrue(mock_popen.called, "subprocess.Popen was not invoked for async speech")
+
+            # Now call stop_speaking and verify termination/cleanup was executed on the process
             stop_speaking()
-            self.assertTrue(True)
+            self.assertTrue(
+                mock_proc.terminate.called or mock_proc.kill.called,
+                "Neither terminate() nor kill() was invoked on active speech process"
+            )
+            thread.join(timeout=1.0)
 
 
 if __name__ == "__main__":

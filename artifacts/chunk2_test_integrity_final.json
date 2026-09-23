@@ -1,0 +1,227 @@
+{
+  "metadata": {
+    "report_name": "Chunk 2 Test Integrity Final Audit",
+    "generated_at": "2026-09-23T13:03:04.393288+00:00",
+    "baseline_commit": "a48b3ffb6e43344b43e980b52f66ae3c83b73fc9",
+    "environment": "macOS Sequoia 15.6 (arm64 Apple Silicon), Python 3.13.5",
+    "audit_scope": "Test authenticity classification, production false-success repair, evidence integrity"
+  },
+  "test_suite_summary": {
+    "total_tests_discovered": 164,
+    "total_tests_passing": 164,
+    "total_test_files": 23,
+    "failures": 0,
+    "errors": 0,
+    "execution_time_seconds": 44.523
+  },
+  "classification_summary": {
+    "UNIT": 38,
+    "LIVE_SUBSYSTEM": 25,
+    "SYNTHETIC": 45,
+    "MOCKED": 35,
+    "HYBRID": 20,
+    "LIVE_MACOS": 1
+  },
+  "phase_2_import_fix": {
+    "file": "tests/live_chunk2_verification.py",
+    "defect": "ExecutionResulMAX typo import",
+    "fix": "Corrected to ExecutionResult",
+    "status": "FIXED_AND_VERIFIED"
+  },
+  "phase_3_guessed_path_removal": {
+    "file": "tests/live_chunk2_verification.py",
+    "function": "run_live_test_b",
+    "defect": "Hardcoded fallback path AXApplication/AXWindow[0]/AXScrollArea[0]/AXTextArea[0] and label 'Document'",
+    "fix": "Removed fallback. Test now fails immediately if dynamic grounding fails.",
+    "status": "FIXED_AND_VERIFIED"
+  },
+  "phase_4_11_classifications": {
+    "test_e": {
+      "old_label": "End-to-End Modal Recovery",
+      "new_label": "SYNTHETIC_MODAL_RECOVERY",
+      "reason": "All ComputerState objects are hand-constructed in-memory. No macOS GUI interaction."
+    },
+    "test_f": {
+      "old_label": "Ambiguous Target Rejection",
+      "new_label": "SYNTHETIC_AMBIGUITY_TEST",
+      "reason": "Fabricated MockApp ComputerState. action_execution_count=0 explicitly asserted."
+    },
+    "test_g": {
+      "old_label": "Unsupported Action Verification",
+      "new_label": "SYNTHETIC_UNVERIFIED_ACTION_TEST",
+      "reason": "Fabricated ExecutionResult and EnvironmentObservation. No macOS interaction."
+    },
+    "gui_battery_classifications": {
+      "gui_text_entry": "LIVE_MACOS (delegates to Test A)",
+      "gui_button_interaction": "HYBRID_LIVE_OBSERVATION_SYNTHETIC_RESULT",
+      "gui_search_navigation": "LIVE_MACOS (delegates to Test D)",
+      "gui_selection": "SYNTHETIC (fabricated ComputerState)",
+      "gui_scrolling": "SYNTHETIC (fabricated EnvironmentObservation)",
+      "gui_multi_step_task": "LIVE_MACOS (delegates to Test B)",
+      "gui_modal_recovery": "SYNTHETIC_MODAL_RECOVERY (delegates to Test E)",
+      "gui_ambiguity_rejection": "SYNTHETIC_AMBIGUITY_TEST (delegates to Test F)",
+      "gui_multi_window_interaction": "LIVE_MACOS (queries live window info)",
+      "gui_cancellation": "LIVE_SUBSYSTEM (real AgentCore.run, cancelled after 50ms)"
+    }
+  },
+  "phase_12_live_native_test": {
+    "file": "tests/test_native_accessibility_tree.py",
+    "function": "test_21_live_macos_native_backend_execution",
+    "description": "Directly executes bin/max-ax-dump on Darwin against Finder",
+    "classification": "LIVE_MACOS",
+    "status": "21/21 PASSING"
+  },
+  "phase_13_evaluator_fixes": {
+    "file": "verification/evaluator.py",
+    "fixes": [
+      {
+        "function": "is_application_running evaluation",
+        "old_behavior": "Always returned generic result",
+        "new_behavior": "True\u2192SATISFIED, False\u2192UNSATISFIED, error/missing\u2192UNKNOWN"
+      },
+      {
+        "function": "type_into_element without post-state",
+        "old_behavior": "Blind SATISFIED from tool success=True",
+        "new_behavior": "UNKNOWN without independent ComputerState evidence"
+      },
+      {
+        "function": "focus_element without post-state",
+        "old_behavior": "Blind SATISFIED from tool success=True",
+        "new_behavior": "UNKNOWN without independent ComputerState evidence"
+      },
+      {
+        "function": "send_key_chord without post-state",
+        "old_behavior": "Blind SATISFIED from tool success=True",
+        "new_behavior": "UNKNOWN without independent ComputerState evidence"
+      }
+    ],
+    "cascading_test_fixes": [
+      "test_computer_use_accessibility.test_type_into_element: SATISFIED\u2192UNKNOWN",
+      "test_computer_use_accessibility.test_send_key_chord: SATISFIED\u2192UNKNOWN",
+      "test_computer_use_agent.test_agent_core_multi_step_continuation: Added plan3 empty plan + replanner mock"
+    ]
+  },
+  "phase_14_agentcore_fix": {
+    "file": "agent/core.py",
+    "fix": "Mutating GUI actions with no expected postcondition return GoalStatus.UNKNOWN even if tool reports success=True",
+    "integrated_features": [
+      "REGROUNDED tracking",
+      "REVALIDATED_SAME_TARGET validation"
+    ]
+  },
+  "phase_15_17_live_replanning": {
+    "file": "tests/live_agentcore_replanning.py",
+    "classification": "LIVE_MACOS",
+    "description": "AgentCore autonomously handled real desktop disturbance without manual harness intervention",
+    "execution_time_ms": 3901.86,
+    "autonomous_steps": 3,
+    "sequence": [
+      "Step 1: type_text in TextEdit \u2192 disturbance activated Finder \u2192 post-observation UNKNOWN",
+      "Step 2: AgentCore executed recovery activate_application TextEdit \u2192 SATISFIED",
+      "Step 3: AgentCore re-grounded text area (REGROUNDED_ACCESSIBILITY) \u2192 typed \u2192 SATISFIED"
+    ],
+    "gate_metric": "100% verified autonomous replanning"
+  },
+  "phase_18_multi_window": {
+    "file": "tests/live_chunk2_integrity_audit.py",
+    "strengthened_assertions": [
+      "Exact 2-window matching",
+      "PID equality verification",
+      "Non-empty subtrees in both windows",
+      "Disjoint element path sets",
+      "Path prefix isolation verification"
+    ]
+  },
+  "phase_19_soak": {
+    "file": "tests/test_soak.py",
+    "features": [
+      "classify_soak_outcome with evidence-based categories",
+      "Step-level verification evidence logging",
+      "Separate MINI_SOAK and FULL_SOAK (50 commands)",
+      "Categories: MAX_DEFECT, ENVIRONMENTAL, USER_INPUT/POLICY, EXPECTED_NEGATIVE, UNKNOWN/NEEDS_REVIEW"
+    ]
+  },
+  "phase_20_voice": {
+    "file": "tests/test_voice_reliability.py",
+    "fixes": [
+      "Removed assertTrue(True) vacuous assertion",
+      "Added active communicate wait & termination verification for stop_speaking()",
+      "Added skipTest when system sound is absent"
+    ],
+    "status": "7/7 PASSING"
+  },
+  "phase_28_regressions": {
+    "file": "tests/test_computer_use_engine.py",
+    "class": "TestChunk2AuthenticityRegressions",
+    "tests_added": 10,
+    "total_in_file": 25,
+    "status": "25/25 PASSING"
+  },
+  "file_integrity": {
+    "verification/evaluator.py": "96e5714bc690af190793e784048ad844af3ec6bfae19259a966d7b60f2081d6c",
+    "agent/core.py": "f3fdf523425ce649ab9c45e97659e4fef7a6561fa51aef5eb9bdabb5cc5d0451",
+    "tests/test_computer_use_accessibility.py": "2e03952413d019414064d58ad84c855827c703f294da4351710d124057fa4186",
+    "tests/test_computer_use_agent.py": "ccd0db10be9d80447928aa801728b6a1a947a661f460b5de8b552326eee5f054",
+    "tests/test_computer_use_engine.py": "ce2f88c4e0b6cb1426fd5d462f1650d794bc7b822588fb1b40635a3946c8addd",
+    "tests/test_native_accessibility_tree.py": "78534d14b44e9fbf27bbb34a6ae42ec04be142f9fb15c7f37b5e4f65e314f73e",
+    "tests/test_voice_reliability.py": "a788ae1e86b715c51184473c5cf51b7edee7dfb4ddc892194eb8331d1fff4da0",
+    "tests/test_soak.py": "d5d08e93b750cf87ceef60caa7b7915d4d372e0ed6c7e5f5fcffe0b0aebe0216",
+    "tests/live_chunk2_verification.py": "b12bbed7bfc2d7532dc3a1c7ed8f19fd2c348ac309ed3f00334fdd6b856f531a",
+    "tests/live_chunk2_integrity_audit.py": "3cdeb3665e83f68c573c53bf97aabf4411b09a191cce826fb0326f0da9c564fb",
+    "tests/live_agentcore_replanning.py": "ce46c7e73ba7d2550640b684ed2a2f49fb2602cd9cbec6654406837e6317c848"
+  },
+  "evidence_limitations": {
+    "synthetic_tests": [
+      "Test E (modal recovery) operates entirely on fabricated ComputerState",
+      "Test F (ambiguity rejection) uses MockApp with fabricated UIElements",
+      "Test G (unverified action) uses fabricated ExecutionResult",
+      "gui_selection uses fabricated ComputerState with is_selected=True",
+      "gui_scrolling uses fabricated EnvironmentObservation"
+    ],
+    "latency_notes": [
+      "Sub-millisecond measurements on synthetic tests are in-memory engine benchmarks, NOT macOS interaction time",
+      "Real macOS interaction latency (Tests A-D, multi-window, replanning) ranges 200-4000ms"
+    ],
+    "live_tests": [
+      "Tests A, B, C: Real TextEdit launch + type + read via native AX tree",
+      "Test D: Real Chrome navigation + tab query",
+      "Multi-window: Real 2-document TextEdit + PID + subtree isolation",
+      "AgentCore replanning: Real autonomous disturbance recovery in 3901ms",
+      "test_21: Real bin/max-ax-dump execution against Finder"
+    ]
+  },
+  "final_verdict": {
+    "status": "CHUNK_2_ACCEPTED_WITH_EVIDENCE_LIMITATIONS",
+    "total_tests": 164,
+    "passing": 164,
+    "failing": 0,
+    "live_macos_tests_verified": true,
+    "synthetic_tests_honestly_labeled": true,
+    "production_false_success_paths_repaired": true,
+    "autonomous_replanning_gate_passed": true
+  },
+  "modified_files": {
+    "production_code": [
+      "agent/core.py",
+      "verification/evaluator.py"
+    ],
+    "test_code": [
+      "tests/test_computer_use_accessibility.py",
+      "tests/test_computer_use_agent.py",
+      "tests/test_computer_use_engine.py",
+      "tests/test_native_accessibility_tree.py",
+      "tests/test_voice_reliability.py",
+      "tests/test_soak.py",
+      "tests/live_chunk2_verification.py",
+      "tests/live_chunk2_integrity_audit.py",
+      "tests/live_agentcore_replanning.py"
+    ],
+    "artifacts": [
+      "artifacts/test_authenticity_before.json",
+      "artifacts/test_authenticity_inventory.json",
+      "artifacts/live_agentcore_replanning_report.json",
+      "artifacts/chunk2_test_integrity_final.json",
+      "artifacts/chunk2_test_integrity_final.md"
+    ]
+  }
+}

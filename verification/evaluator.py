@@ -19,11 +19,25 @@ from pathlib import Path
 import re
 from typing import Any, Optional, TYPE_CHECKING
 from capabilities.base import ExecutionResult
-from verification.base import GoalStatus, VerificationResult, GoalEvaluation
+from verification.base import (
+    GoalStatus,
+    VerificationResult,
+    GoalEvaluation,
+    ExpectedPostcondition,
+    PostconditionType,
+)
+from capabilities.accessibility.models import ComputerState, UIElement
 
 if TYPE_CHECKING:
     from agent.planner import PlanStep
     from agent.observer import AgentObservation
+
+CUSTOM_POSTCONDITION_REGISTRY: dict[str, Any] = {}
+
+
+def register_custom_verifier(name: str, verifier_fn: Any) -> None:
+    """Register an explicit custom verification function."""
+    CUSTOM_POSTCONDITION_REGISTRY[name] = verifier_fn
 
 
 class GoalEvaluator:
@@ -34,12 +48,19 @@ class GoalEvaluator:
         step: PlanStep,
         result: ExecutionResult,
         observation: AgentObservation,
+        pre_observation: Optional[AgentObservation] = None,
     ) -> VerificationResult:
         """Deterministically verify whether a step achieved its intended outcome.
 
         Does not perform LLM calls unless deterministic verification is fundamentally impossible.
         """
         if not result.success:
+            if step.action.lower() == "is_application_running":
+                return VerificationResult(
+                    status=GoalStatus.UNKNOWN,
+                    explanation=result.error or f"Could not determine running state for '{step.args.get('application_name', '')}'.",
+                    evidence=result.evidence,
+                )
             return VerificationResult(
                 status=GoalStatus.UNSATISFIED,
                 explanation=f"Action '{step.capability}.{step.action}' failed: {result.error or 'Tool error'}",
@@ -97,12 +118,25 @@ class GoalEvaluator:
 
             elif action == "is_application_running":
                 app_target = step.args.get("application_name", "")
-                is_running = result.data.get("is_running", False)
-                return VerificationResult(
-                    status=GoalStatus.SATISFIED,
-                    explanation=f"Checked running state for '{app_target}' (running: {is_running}).",
-                    evidence={"application": app_target, "is_running": is_running},
-                )
+                if not result.success or "is_running" not in result.data:
+                    return VerificationResult(
+                        status=GoalStatus.UNKNOWN,
+                        explanation=result.error or f"Could not determine running state for '{app_target}'.",
+                        evidence=result.evidence,
+                    )
+                is_running = bool(result.data.get("is_running", False))
+                if is_running:
+                    return VerificationResult(
+                        status=GoalStatus.SATISFIED,
+                        explanation=f"Application '{app_target}' is verified as running.",
+                        evidence={"application": app_target, "is_running": True},
+                    )
+                else:
+                    return VerificationResult(
+                        status=GoalStatus.UNSATISFIED,
+                        explanation=f"Application '{app_target}' is verified as NOT running.",
+                        evidence={"application": app_target, "is_running": False},
+                    )
 
             elif action == "list_installed_applications":
                 return VerificationResult(
@@ -247,6 +281,20 @@ class GoalEvaluator:
                     explanation=f"Browser query operation '{action}' successfully retrieved page data.",
                     evidence=result.evidence,
                 )
+            elif action in ("open_url", "search_web"):
+                if result.success and (result.verification.get("url_opened") or result.verification.get("browser_opened") or result.verification.get("search_dispatched")):
+                    target = step.args.get("url") or step.args.get("query") or ""
+                    return VerificationResult(
+                        status=GoalStatus.SATISFIED,
+                        explanation=f"Browser action '{action}' navigated to '{target}'.",
+                        evidence=result.evidence,
+                    )
+                elif not result.success:
+                    return VerificationResult(
+                        status=GoalStatus.UNSATISFIED,
+                        explanation=result.error or f"Browser action '{action}' failed.",
+                        evidence=result.evidence,
+                    )
             return VerificationResult(
                 status=GoalStatus.UNKNOWN,
                 explanation=f"Browser action '{action}' was dispatched, but no explicit tab/page state verification is implemented.",
@@ -277,100 +325,227 @@ class GoalEvaluator:
                         evidence=result.evidence,
                     )
             elif action == "click_element":
-                if result.success and result.verification.get("element_clicked"):
-                    method = result.data.get("method", "system_events")
-                    return VerificationResult(
-                        status=GoalStatus.SATISFIED,
-                        explanation=f"Clicked element '{step.args.get('label')}' via {method}.",
-                        evidence=result.evidence,
-                    )
-                elif not result.success or result.error:
+                if not result.success or result.error:
                     return VerificationResult(
                         status=GoalStatus.UNSATISFIED,
                         explanation=result.error or f"Failed to click element '{step.args.get('label')}'.",
                         evidence=result.evidence,
                     )
-            elif action == "type_into_element":
-                if result.success and result.verification.get("typed_successfully"):
-                    return VerificationResult(
-                        status=GoalStatus.SATISFIED,
-                        explanation=f"Typed {result.data.get('text_length', 0)} character(s) into '{step.args.get('target_label') or 'active element'}'.",
-                        evidence=result.evidence,
+                # If pre and post computer states are provided, verify state transition via compute_delta
+                if pre_observation and pre_observation.computer_state and observation.computer_state:
+                    delta = pre_observation.computer_state.compute_delta(observation.computer_state)
+                    has_state_delta = (
+                        delta.get("application_changed")
+                        or delta.get("window_changed")
+                        or delta.get("focus_changed")
+                        or bool(delta.get("value_changes"))
+                        or delta.get("added_controls_count", 0) > 0
+                        or delta.get("removed_controls_count", 0) > 0
                     )
-                elif not result.success or result.error:
+                    method = result.data.get("method", "system_events")
+                    if has_state_delta:
+                        return VerificationResult(
+                            status=GoalStatus.SATISFIED,
+                            explanation=f"Clicked element '{step.args.get('label')}' via {method}: verified UI state transition.",
+                            evidence={"delta": delta, "method": method},
+                        )
+                # Without verified state transition or explicit satisfied postcondition, return UNKNOWN
+                return VerificationResult(
+                    status=GoalStatus.UNKNOWN,
+                    explanation=f"Click was dispatched on '{step.args.get('label')}', but no observable state change or expected postcondition could be verified.",
+                    evidence=result.evidence,
+                )
+            elif action == "type_into_element":
+                expected_text = step.args.get("text") or result.evidence.get("expected_text", "")
+                target_label = step.args.get("target_label", "")
+                target_path = step.args.get("target_path") or result.evidence.get("target_path", "")
+
+                # If rich ComputerState observation is present, perform genuine state inspection
+                if observation.computer_state:
+                    state = observation.computer_state
+                    el: Optional[UIElement] = None
+                    if target_path and state.root_element:
+                        el = state.root_element.find_by_path(target_path)
+                    if not el and target_path:
+                        for cand in state.interactive_elements:
+                            if cand.path == target_path:
+                                el = cand
+                                break
+                    if not el and state.focused_element:
+                        el = state.focused_element
+                    if not el and target_label:
+                        for cand in state.interactive_elements:
+                            if cand.matches_query(target_label):
+                                el = cand
+                                break
+
+                    if el and el.value is not None:
+                        actual_val = el.value.strip()
+                        if expected_text.strip() in actual_val or actual_val == expected_text.strip():
+                            return VerificationResult(
+                                status=GoalStatus.SATISFIED,
+                                explanation=f"Verified text '{expected_text}' is present in {el.role} (value: '{actual_val}').",
+                                evidence={"actual_value": actual_val, "expected_value": expected_text, "target_path": el.path},
+                            )
+                        else:
+                            return VerificationResult(
+                                status=GoalStatus.UNSATISFIED,
+                                explanation=f"Text verification failed: expected '{expected_text}', but element value is '{actual_val}'.",
+                                evidence={"actual_value": actual_val, "expected_value": expected_text, "target_path": el.path},
+                            )
+                    elif el:
+                        return VerificationResult(
+                            status=GoalStatus.UNKNOWN,
+                            explanation=f"Keystrokes dispatched, but target element '{el.role}' does not expose an accessible text value to verify.",
+                            evidence={"keystrokes_dispatched": True, "target_path": el.path},
+                        )
+                    else:
+                        return VerificationResult(
+                            status=GoalStatus.UNKNOWN,
+                            explanation=f"Keystrokes dispatched, but target element was not found in post-action state to verify text value.",
+                            evidence={"keystrokes_dispatched": True},
+                        )
+
+                if not result.success or result.error:
                     return VerificationResult(
                         status=GoalStatus.UNSATISFIED,
                         explanation=result.error or f"Failed to type text into element '{step.args.get('target_label')}'.",
                         evidence=result.evidence,
                     )
+                # Without independent ComputerState or verified state transition, typing dispatch alone is UNKNOWN
+                return VerificationResult(
+                    status=GoalStatus.UNKNOWN,
+                    explanation=f"Keystrokes were dispatched to '{step.args.get('target_label') or 'active element'}', but no independent ComputerState/postcondition evidence exists to verify text value.",
+                    evidence=result.evidence,
+                )
             elif action == "focus_element":
-                if result.success and result.verification.get("focused"):
-                    return VerificationResult(
-                        status=GoalStatus.SATISFIED,
-                        explanation=f"Moved focus to element '{step.args.get('label')}'.",
-                        evidence=result.evidence,
-                    )
-                elif not result.success or result.error:
+                if not result.success or result.error:
                     return VerificationResult(
                         status=GoalStatus.UNSATISFIED,
                         explanation=result.error or f"Failed to focus element '{step.args.get('label')}'.",
                         evidence=result.evidence,
                     )
+                if observation.computer_state and observation.computer_state.focused_element:
+                    fe = observation.computer_state.focused_element
+                    target_label = (step.args.get("label") or "").strip().lower()
+                    if target_label in (fe.title or "").lower() or target_label in (fe.description or "").lower() or target_label in (fe.identifier or "").lower():
+                        return VerificationResult(
+                            status=GoalStatus.SATISFIED,
+                            explanation=f"Verified element {fe.role} '{fe.title}' is currently focused.",
+                            evidence={"focused_role": fe.role, "focused_title": fe.title, "path": fe.path},
+                        )
+                    else:
+                        return VerificationResult(
+                            status=GoalStatus.UNSATISFIED,
+                            explanation=f"Focus verification failed: expected focus on '{target_label}', but focused element is {fe.role} '{fe.title}'.",
+                            evidence={"actual_focused": fe.to_summary_dict()},
+                        )
+                return VerificationResult(
+                    status=GoalStatus.UNKNOWN,
+                    explanation=f"Focus command dispatched on '{step.args.get('label')}', but focus state could not be independently verified from post-action computer state.",
+                    evidence=result.evidence,
+                )
             elif action in ("send_keystroke", "send_key_chord"):
-                if result.success and result.verification.get("keystroke_sent"):
-                    key_val = step.args.get("text") or step.args.get("key") or ""
-                    mods = step.args.get("modifiers", "")
-                    chord_str = f"{mods}+{key_val}" if mods else key_val
-                    return VerificationResult(
-                        status=GoalStatus.SATISFIED,
-                        explanation=f"Dispatched keystroke shortcut '{chord_str}'.",
-                        evidence=result.evidence,
-                    )
-                elif not result.success or result.error:
+                if not result.success or result.error:
                     return VerificationResult(
                         status=GoalStatus.UNSATISFIED,
                         explanation=result.error or "Failed to send keystroke.",
                         evidence=result.evidence,
                     )
-            elif action == "scroll":
-                if result.success and result.verification.get("scrolled"):
-                    return VerificationResult(
-                        status=GoalStatus.SATISFIED,
-                        explanation=f"Scrolled {step.args.get('direction', 'down')} by {step.args.get('amount', 5)} units.",
-                        evidence=result.evidence,
+                # If pre and post computer states are provided, verify state transition via compute_delta
+                if pre_observation and pre_observation.computer_state and observation.computer_state:
+                    delta = pre_observation.computer_state.compute_delta(observation.computer_state)
+                    has_state_delta = (
+                        delta.get("application_changed")
+                        or delta.get("window_changed")
+                        or delta.get("focus_changed")
+                        or bool(delta.get("value_changes"))
+                        or delta.get("added_controls_count", 0) > 0
+                        or delta.get("removed_controls_count", 0) > 0
                     )
-                elif not result.success or result.error:
+                    if has_state_delta:
+                        key_val = step.args.get("text") or step.args.get("key") or ""
+                        mods = step.args.get("modifiers", "")
+                        chord_str = f"{mods}+{key_val}" if mods else key_val
+                        return VerificationResult(
+                            status=GoalStatus.SATISFIED,
+                            explanation=f"Dispatched keystroke shortcut '{chord_str}': verified UI state transition.",
+                            evidence={"delta": delta},
+                        )
+                return VerificationResult(
+                    status=GoalStatus.UNKNOWN,
+                    explanation="Keystroke/chord was dispatched, but no independent state change or expected postcondition could be verified.",
+                    evidence=result.evidence,
+                )
+            elif action == "scroll":
+                if not result.success or result.error:
                     return VerificationResult(
                         status=GoalStatus.UNSATISFIED,
                         explanation=result.error or "Scroll action failed.",
                         evidence=result.evidence,
                     )
-            elif action == "click_menu_item":
-                if result.success and result.verification.get("menu_item_clicked"):
-                    return VerificationResult(
-                        status=GoalStatus.SATISFIED,
-                        explanation=f"Clicked menu item '{step.args.get('item_name')}' in '{step.args.get('menu_name')}'.",
-                        evidence=result.evidence,
-                    )
-                elif not result.success or result.error:
+                # Scroll is only SATISFIED if requested content/target can be verified in post-state
+                target_to_reveal = step.args.get("target_label") or step.args.get("expected_text")
+                if target_to_reveal and observation.computer_state:
+                    state = observation.computer_state
+                    for el in state.interactive_elements:
+                        if el.matches_query(target_to_reveal):
+                            return VerificationResult(
+                                status=GoalStatus.SATISFIED,
+                                explanation=f"Scrolled and verified target content '{target_to_reveal}' is now visible.",
+                                evidence={"target_revealed": target_to_reveal, "element": el.to_summary_dict()},
+                            )
                     return VerificationResult(
                         status=GoalStatus.UNSATISFIED,
-                        explanation=result.error or f"Could not click menu item '{step.args.get('item_name')}'.",
+                        explanation=f"Scrolled, but expected content '{target_to_reveal}' was not revealed.",
                         evidence=result.evidence,
                     )
-            elif action == "close_frontmost_window":
-                if result.success and result.verification.get("close_button_clicked"):
+                return VerificationResult(
+                    status=GoalStatus.UNKNOWN,
+                    explanation=f"Scroll action was dispatched ({step.args.get('direction', 'down')}), but resulting content visibility could not be independently verified.",
+                    evidence=result.evidence,
+                )
+            elif action == "click_menu_item":
+                if not result.success or result.error:
                     return VerificationResult(
-                        status=GoalStatus.SATISFIED,
-                        explanation="Closed frontmost window.",
+                        status=GoalStatus.UNSATISFIED,
+                        explanation=result.error or f"Failed to click menu item '{step.args.get('item_name')}'.",
                         evidence=result.evidence,
                     )
-                elif not result.success or result.error:
+                if pre_observation and pre_observation.computer_state and observation.computer_state:
+                    delta = pre_observation.computer_state.compute_delta(observation.computer_state)
+                    has_delta = delta.get("window_changed") or delta.get("application_changed") or delta.get("focus_changed") or delta.get("added_controls_count", 0) > 0
+                    if has_delta:
+                        return VerificationResult(
+                            status=GoalStatus.SATISFIED,
+                            explanation=f"Clicked menu item '{step.args.get('item_name')}' in '{step.args.get('menu_name')}': state transition verified.",
+                            evidence={"delta": delta},
+                        )
+                return VerificationResult(
+                    status=GoalStatus.UNKNOWN,
+                    explanation=f"Menu item '{step.args.get('item_name')}' was clicked, but no explicit post-action GUI state verification or resulting state transition could be verified.",
+                    evidence=result.evidence,
+                )
+            elif action == "close_frontmost_window":
+                if not result.success or result.error:
                     return VerificationResult(
                         status=GoalStatus.UNSATISFIED,
                         explanation=result.error or "Could not close frontmost window.",
                         evidence=result.evidence,
                     )
+                if pre_observation and pre_observation.computer_state and observation.computer_state:
+                    delta = pre_observation.computer_state.compute_delta(observation.computer_state)
+                    if delta.get("window_changed") or delta.get("removed_controls_count", 0) > 0 or len(observation.computer_state.windows) < len(pre_observation.computer_state.windows):
+                        return VerificationResult(
+                            status=GoalStatus.SATISFIED,
+                            explanation="Verified frontmost window was closed.",
+                            evidence={"delta": delta},
+                        )
+                return VerificationResult(
+                    status=GoalStatus.UNKNOWN,
+                    explanation="Window close request dispatched, but window closing could not be verified.",
+                    evidence=result.evidence,
+                )
             return VerificationResult(
                 status=GoalStatus.UNKNOWN,
                 explanation=f"Accessibility action '{action}' executed, but no explicit post-action GUI state verification is implemented.",
@@ -474,6 +649,259 @@ class GoalEvaluator:
             explanation="All planned steps executed and verified successfully.",
             evidence=last_rec.verification.evidence,
             verified_steps=[r.step.step_number for r in steps_executed],
+        )
+
+    def evaluate_postcondition(
+        self,
+        postcondition: ExpectedPostcondition,
+        pre_state: Optional[ComputerState],
+        post_state: Optional[ComputerState],
+        result: Optional[ExecutionResult] = None,
+    ) -> VerificationResult:
+        """Deterministically evaluate an ExpectedPostcondition against pre/post ComputerState."""
+        pt = postcondition.postcondition_type
+
+        # 1. TEXT_VALUE_EQUALS & TEXT_VALUE_CONTAINS
+        if pt in (PostconditionType.TEXT_VALUE_EQUALS, PostconditionType.TEXT_VALUE_CONTAINS):
+            if not post_state:
+                return VerificationResult(
+                    status=GoalStatus.UNKNOWN,
+                    explanation="No post-action ComputerState available to inspect text value.",
+                )
+            el: Optional[UIElement] = None
+            if postcondition.target_path and post_state.root_element:
+                el = post_state.root_element.find_by_path(postcondition.target_path)
+            if not el and postcondition.target_path:
+                for cand in post_state.interactive_elements:
+                    if cand.path == postcondition.target_path:
+                        el = cand
+                        break
+            if not el and post_state.focused_element:
+                el = post_state.focused_element
+            if not el:
+                return VerificationResult(
+                    status=GoalStatus.UNKNOWN,
+                    explanation=f"Target element at '{postcondition.target_path or 'focused'}' not found in post-state to verify text value.",
+                )
+
+            actual_val = el.value
+            if actual_val is None:
+                return VerificationResult(
+                    status=GoalStatus.UNKNOWN,
+                    explanation=f"Target element {el.role} '{el.title}' exists, but exposes no accessible text value.",
+                    evidence={"target_path": el.path, "role": el.role},
+                )
+
+            expected = (postcondition.expected_value or "").strip()
+            actual = actual_val.strip()
+
+            if pt == PostconditionType.TEXT_VALUE_EQUALS:
+                if actual == expected:
+                    return VerificationResult(
+                        status=GoalStatus.SATISFIED,
+                        explanation=f"Verified text value equals '{expected}' in {el.role}.",
+                        evidence={"actual_value": actual_val, "expected_value": expected, "target_path": el.path},
+                    )
+                else:
+                    return VerificationResult(
+                        status=GoalStatus.UNSATISFIED,
+                        explanation=f"Text verification failed: expected '{expected}', found '{actual_val}'.",
+                        evidence={"actual_value": actual_val, "expected_value": expected, "target_path": el.path},
+                    )
+            else:  # TEXT_VALUE_CONTAINS
+                if expected in actual:
+                    return VerificationResult(
+                        status=GoalStatus.SATISFIED,
+                        explanation=f"Verified text '{expected}' is contained in {el.role} value ('{actual_val}').",
+                        evidence={"actual_value": actual_val, "expected_value": expected, "target_path": el.path},
+                    )
+                else:
+                    return VerificationResult(
+                        status=GoalStatus.UNSATISFIED,
+                        explanation=f"Text verification failed: expected '{expected}' not found in '{actual_val}'.",
+                        evidence={"actual_value": actual_val, "expected_value": expected, "target_path": el.path},
+                    )
+
+        # 2. ELEMENT_FOCUSED
+        elif pt == PostconditionType.ELEMENT_FOCUSED:
+            if not post_state or not post_state.focused_element:
+                return VerificationResult(
+                    status=GoalStatus.UNSATISFIED,
+                    explanation="No element is focused in post-action state.",
+                )
+            fe = post_state.focused_element
+            target_path = postcondition.target_path or ""
+            expected_title = (postcondition.expected_value or "").strip().lower()
+            if target_path and (fe.path == target_path or fe.path.endswith(target_path.split("/")[-1])):
+                return VerificationResult(
+                    status=GoalStatus.SATISFIED,
+                    explanation=f"Verified element at path '{fe.path}' is focused.",
+                    evidence={"path": fe.path, "role": fe.role},
+                )
+            if expected_title and (
+                expected_title == fe.role.lower()
+                or expected_title in (fe.title or "").lower()
+                or expected_title in (fe.description or "").lower()
+            ):
+                return VerificationResult(
+                    status=GoalStatus.SATISFIED,
+                    explanation=f"Verified element '{fe.title}' ({fe.role}) is focused.",
+                    evidence={"path": fe.path, "title": fe.title, "role": fe.role},
+                )
+            return VerificationResult(
+                status=GoalStatus.UNSATISFIED,
+                explanation=f"Focus mismatch: expected '{target_path or expected_title}', but {fe.role} '{fe.title}' is focused.",
+                evidence={"actual_focused": fe.to_summary_dict()},
+            )
+
+
+        # 3. WINDOW_ACTIVE
+        elif pt == PostconditionType.WINDOW_ACTIVE:
+            if not post_state:
+                return VerificationResult(status=GoalStatus.UNKNOWN, explanation="No post-state available.")
+            expected_win = (postcondition.expected_window or "").strip().lower()
+            actual_win = (post_state.active_window_title or "").strip().lower()
+            if expected_win in actual_win or actual_win in expected_win:
+                return VerificationResult(
+                    status=GoalStatus.SATISFIED,
+                    explanation=f"Verified active window is '{post_state.active_window_title}'.",
+                    evidence={"active_window": post_state.active_window_title},
+                )
+            return VerificationResult(
+                status=GoalStatus.UNSATISFIED,
+                explanation=f"Window mismatch: expected '{postcondition.expected_window}', found '{post_state.active_window_title}'.",
+                evidence={"actual_window": post_state.active_window_title},
+            )
+
+        # 4. WINDOW_CLOSED
+        elif pt == PostconditionType.WINDOW_CLOSED:
+            if not post_state:
+                return VerificationResult(status=GoalStatus.UNKNOWN, explanation="No post-state available.")
+            expected_win = (postcondition.expected_window or "").strip().lower()
+            curr_titles = [w.title.lower() for w in post_state.windows if w.title]
+            if curr_titles and any(expected_win in t for t in curr_titles):
+                return VerificationResult(
+                    status=GoalStatus.UNSATISFIED,
+                    explanation=f"Window '{postcondition.expected_window}' is still present in post-action state.",
+                )
+            return VerificationResult(
+                status=GoalStatus.SATISFIED,
+                explanation=f"Verified window '{postcondition.expected_window}' was closed.",
+            )
+
+        # 5. ELEMENT_DISAPPEARED
+        elif pt == PostconditionType.ELEMENT_DISAPPEARED:
+            if not post_state:
+                return VerificationResult(status=GoalStatus.UNKNOWN, explanation="No post-state available.")
+            target_path = postcondition.target_path or ""
+            still_exists = False
+            if post_state.root_element and post_state.root_element.find_by_path(target_path):
+                still_exists = True
+            for el in post_state.interactive_elements:
+                if el.path == target_path:
+                    still_exists = True
+                    break
+            if still_exists:
+                return VerificationResult(
+                    status=GoalStatus.UNSATISFIED,
+                    explanation=f"Element at path '{target_path}' is still present.",
+                )
+            return VerificationResult(
+                status=GoalStatus.SATISFIED,
+                explanation=f"Verified element at path '{target_path}' has disappeared.",
+            )
+
+        # 6. ELEMENT_SELECTED
+        elif pt == PostconditionType.ELEMENT_SELECTED:
+            if not post_state:
+                return VerificationResult(status=GoalStatus.UNKNOWN, explanation="No post-state available.")
+            target_path = postcondition.target_path or ""
+            el = None
+            if post_state.root_element:
+                el = post_state.root_element.find_by_path(target_path)
+            if not el:
+                for cand in post_state.interactive_elements:
+                    if cand.path == target_path:
+                        el = cand
+                        break
+            if not el:
+                return VerificationResult(status=GoalStatus.UNKNOWN, explanation=f"Target element '{target_path}' not found.")
+            if el.is_selected is True:
+                return VerificationResult(status=GoalStatus.SATISFIED, explanation=f"Verified element '{el.title}' is selected.")
+            elif el.is_selected is False:
+                return VerificationResult(status=GoalStatus.UNSATISFIED, explanation=f"Element '{el.title}' is not selected.")
+            else:
+                return VerificationResult(status=GoalStatus.UNKNOWN, explanation=f"Selection state for '{el.title}' is unknown.")
+
+        # 7. STATE_DELTA_MATCH
+        elif pt == PostconditionType.STATE_DELTA_MATCH:
+            if not pre_state or not post_state:
+                return VerificationResult(status=GoalStatus.UNKNOWN, explanation="Pre/post states missing for delta comparison.")
+            delta = pre_state.compute_delta(post_state)
+            req_keys = postcondition.expected_delta_keys or []
+            missing_keys = []
+            for k in req_keys:
+                if not delta.get(k):
+                    missing_keys.append(k)
+            if missing_keys:
+                return VerificationResult(
+                    status=GoalStatus.UNSATISFIED,
+                    explanation=f"State delta missing expected transition(s): {missing_keys}",
+                    evidence={"delta": delta},
+                )
+            return VerificationResult(
+                status=GoalStatus.SATISFIED,
+                explanation="Verified state delta matched all expected transitions.",
+                evidence={"delta": delta},
+            )
+
+        # 8. APPLICATION_RUNNING
+        elif pt == PostconditionType.APPLICATION_RUNNING:
+            expected_app = (postcondition.expected_application or "").strip().lower()
+            if post_state and expected_app in post_state.active_application.lower():
+                return VerificationResult(
+                    status=GoalStatus.SATISFIED,
+                    explanation=f"Verified application '{post_state.active_application}' is running and active.",
+                )
+            from macos.shell import run_shell_command
+            ps_res = run_shell_command(f"/usr/bin/pgrep -x -i '{postcondition.expected_application}'", timeout=2)
+            if ps_res.success and ps_res.stdout.strip():
+                return VerificationResult(
+                    status=GoalStatus.SATISFIED,
+                    explanation=f"Verified process '{postcondition.expected_application}' is running (PID: {ps_res.stdout.strip().splitlines()[0]}).",
+                )
+            return VerificationResult(
+                status=GoalStatus.UNSATISFIED,
+                explanation=f"Application '{postcondition.expected_application}' is not running.",
+            )
+
+        # 9. FILE_EXISTS
+        elif pt == PostconditionType.FILE_EXISTS:
+            p = Path(postcondition.target_path or "")
+            if p.exists():
+                return VerificationResult(
+                    status=GoalStatus.SATISFIED,
+                    explanation=f"Verified file exists: {p}",
+                    evidence={"file_size": p.stat().st_size if p.is_file() else 0},
+                )
+            return VerificationResult(
+                status=GoalStatus.UNSATISFIED,
+                explanation=f"File does not exist: {p}",
+            )
+
+        # 10. CUSTOM
+        elif pt == PostconditionType.CUSTOM:
+            verifier_name = getattr(postcondition, "custom_verifier_name", None)
+            if verifier_name and verifier_name in CUSTOM_POSTCONDITION_REGISTRY:
+                return CUSTOM_POSTCONDITION_REGISTRY[verifier_name](postcondition, pre_state, post_state, result)
+            return VerificationResult(
+                status=GoalStatus.UNKNOWN,
+                explanation=f"Custom postcondition '{postcondition.description or 'unnamed'}' has no registered verifier or inconclusive evidence.",
+                evidence=result.evidence if result else {},
+            )
+        return VerificationResult(
+            status=GoalStatus.UNKNOWN,
+            explanation="Unrecognized postcondition type or inconclusive state.",
         )
 
 

@@ -1,0 +1,1327 @@
+{
+  "generated_by": "generate_inventory.py",
+  "total_test_functions": 164,
+  "total_test_files": 23,
+  "classification_summary": {
+    "UNIT": 38,
+    "LIVE_SUBSYSTEM": 25,
+    "SYNTHETIC": 45,
+    "MOCKED": 35,
+    "HYBRID": 20,
+    "LIVE_MACOS": 1
+  },
+  "test_functions": [
+    {
+      "file": "test_accessibility.py",
+      "class": "TestAccessibility",
+      "function": "test_get_active_window_info",
+      "line": 12,
+      "classification": "UNIT",
+      "docstring": ""
+    },
+    {
+      "file": "test_accessibility.py",
+      "class": "TestAccessibility",
+      "function": "test_list_menu_items_frontmost",
+      "line": 18,
+      "classification": "UNIT",
+      "docstring": ""
+    },
+    {
+      "file": "test_accessibility.py",
+      "class": "TestAccessibility",
+      "function": "test_send_keystroke_escape",
+      "line": 24,
+      "classification": "UNIT",
+      "docstring": ""
+    },
+    {
+      "file": "test_browser.py",
+      "class": "TestBrowser",
+      "function": "test_search_web_url_generation",
+      "line": 12,
+      "classification": "UNIT",
+      "docstring": ""
+    },
+    {
+      "file": "test_browser.py",
+      "class": "TestBrowser",
+      "function": "test_search_web_google_encoding",
+      "line": 17,
+      "classification": "UNIT",
+      "docstring": ""
+    },
+    {
+      "file": "test_browser.py",
+      "class": "TestBrowser",
+      "function": "test_handle_action_search",
+      "line": 22,
+      "classification": "UNIT",
+      "docstring": ""
+    },
+    {
+      "file": "test_cancellation.py",
+      "class": "TestCancellationAndRecovery",
+      "function": "test_agent_cancellation_during_execution",
+      "line": 16,
+      "classification": "LIVE_SUBSYSTEM",
+      "docstring": "User cancellation must stop execution loop and transition to CANCELLED."
+    },
+    {
+      "file": "test_cancellation.py",
+      "class": "TestCancellationAndRecovery",
+      "function": "test_voice_assistant_cancellation_detection",
+      "line": 44,
+      "classification": "LIVE_SUBSYSTEM",
+      "docstring": "Spoken 'stop' or 'cancel' triggers voice cancellation immediately."
+    },
+    {
+      "file": "test_cancellation.py",
+      "class": "TestCancellationAndRecovery",
+      "function": "test_voice_assistant_cancel_method",
+      "line": 55,
+      "classification": "LIVE_SUBSYSTEM",
+      "docstring": "VoiceAssistant.cancel() aborts active agent and silences TTS."
+    },
+    {
+      "file": "test_cancellation.py",
+      "class": "TestCancellationAndRecovery",
+      "function": "test_voice_assistant_watchdog_recovery",
+      "line": 67,
+      "classification": "LIVE_SUBSYSTEM",
+      "docstring": "Watchdog detects stuck active state and recovers without process exit."
+    },
+    {
+      "file": "test_capabilities.py",
+      "class": "TestCapabilities",
+      "function": "test_terminal_execute_echo",
+      "line": 22,
+      "classification": "UNIT",
+      "docstring": ""
+    },
+    {
+      "file": "test_capabilities.py",
+      "class": "TestCapabilities",
+      "function": "test_terminal_check_tool_installed",
+      "line": 28,
+      "classification": "UNIT",
+      "docstring": ""
+    },
+    {
+      "file": "test_capabilities.py",
+      "class": "TestCapabilities",
+      "function": "test_filesystem_write_read_metadata",
+      "line": 33,
+      "classification": "UNIT",
+      "docstring": ""
+    },
+    {
+      "file": "test_capabilities.py",
+      "class": "TestCapabilities",
+      "function": "test_filesystem_find_files",
+      "line": 51,
+      "classification": "UNIT",
+      "docstring": ""
+    },
+    {
+      "file": "test_capabilities.py",
+      "class": "TestCapabilities",
+      "function": "test_applications_discovery",
+      "line": 56,
+      "classification": "UNIT",
+      "docstring": ""
+    },
+    {
+      "file": "test_capabilities.py",
+      "class": "TestCapabilities",
+      "function": "test_macos_clipboard_roundtrip",
+      "line": 61,
+      "classification": "UNIT",
+      "docstring": ""
+    },
+    {
+      "file": "test_capabilities.py",
+      "class": "TestCapabilities",
+      "function": "test_developer_inspect_project",
+      "line": 70,
+      "classification": "UNIT",
+      "docstring": ""
+    },
+    {
+      "file": "test_computer_use_accessibility.py",
+      "class": "TestComputerUseAccessibility",
+      "function": "test_get_computer_state",
+      "line": 27,
+      "classification": "SYNTHETIC",
+      "docstring": ""
+    },
+    {
+      "file": "test_computer_use_accessibility.py",
+      "class": "TestComputerUseAccessibility",
+      "function": "test_find_element_success",
+      "line": 35,
+      "classification": "SYNTHETIC",
+      "docstring": ""
+    },
+    {
+      "file": "test_computer_use_accessibility.py",
+      "class": "TestComputerUseAccessibility",
+      "function": "test_find_element_not_found",
+      "line": 43,
+      "classification": "SYNTHETIC",
+      "docstring": ""
+    },
+    {
+      "file": "test_computer_use_accessibility.py",
+      "class": "TestComputerUseAccessibility",
+      "function": "test_click_element_success",
+      "line": 51,
+      "classification": "SYNTHETIC",
+      "docstring": ""
+    },
+    {
+      "file": "test_computer_use_accessibility.py",
+      "class": "TestComputerUseAccessibility",
+      "function": "test_type_into_element",
+      "line": 84,
+      "classification": "SYNTHETIC",
+      "docstring": ""
+    },
+    {
+      "file": "test_computer_use_accessibility.py",
+      "class": "TestComputerUseAccessibility",
+      "function": "test_send_key_chord",
+      "line": 104,
+      "classification": "SYNTHETIC",
+      "docstring": ""
+    },
+    {
+      "file": "test_computer_use_agent.py",
+      "class": "TestComputerUseAgent",
+      "function": "test_goal_evaluator_rejects_premature_completion_when_interaction_requested",
+      "line": 13,
+      "classification": "MOCKED",
+      "docstring": "If user asks to open an app and message/type, launching the app alone is not SATISFIED."
+    },
+    {
+      "file": "test_computer_use_agent.py",
+      "class": "TestComputerUseAgent",
+      "function": "test_agent_core_multi_step_continuation",
+      "line": 43,
+      "classification": "MOCKED",
+      "docstring": "AgentCore continues planning when queue is empty but goal requires subsequent interaction."
+    },
+    {
+      "file": "test_computer_use_engine.py",
+      "class": "TestComputerUseEngine",
+      "function": "test_goal_subgoal_lifecycle",
+      "line": 111,
+      "classification": "SYNTHETIC",
+      "docstring": ""
+    },
+    {
+      "file": "test_computer_use_engine.py",
+      "class": "TestComputerUseEngine",
+      "function": "test_hierarchical_grounding_container_descendant",
+      "line": 133,
+      "classification": "SYNTHETIC",
+      "docstring": ""
+    },
+    {
+      "file": "test_computer_use_engine.py",
+      "class": "TestComputerUseEngine",
+      "function": "test_strict_ambiguity_rejection",
+      "line": 146,
+      "classification": "SYNTHETIC",
+      "docstring": ""
+    },
+    {
+      "file": "test_computer_use_engine.py",
+      "class": "TestComputerUseEngine",
+      "function": "test_target_reference_staleness",
+      "line": 168,
+      "classification": "SYNTHETIC",
+      "docstring": ""
+    },
+    {
+      "file": "test_computer_use_engine.py",
+      "class": "TestComputerUseEngine",
+      "function": "test_postcondition_text_entry_truthful_verification",
+      "line": 194,
+      "classification": "SYNTHETIC",
+      "docstring": ""
+    },
+    {
+      "file": "test_computer_use_engine.py",
+      "class": "TestComputerUseEngine",
+      "function": "test_postcondition_state_delta",
+      "line": 228,
+      "classification": "SYNTHETIC",
+      "docstring": ""
+    },
+    {
+      "file": "test_computer_use_engine.py",
+      "class": "TestComputerUseEngine",
+      "function": "test_postcondition_selection",
+      "line": 242,
+      "classification": "SYNTHETIC",
+      "docstring": ""
+    },
+    {
+      "file": "test_computer_use_engine.py",
+      "class": "TestComputerUseEngine",
+      "function": "test_state_driven_replanning_modal_interruption",
+      "line": 264,
+      "classification": "SYNTHETIC",
+      "docstring": ""
+    },
+    {
+      "file": "test_computer_use_engine.py",
+      "class": "TestComputerUseEngine",
+      "function": "test_planner_zero_echo_fallbacks",
+      "line": 301,
+      "classification": "SYNTHETIC",
+      "docstring": ""
+    },
+    {
+      "file": "test_computer_use_engine.py",
+      "class": "TestComputerUseEngine",
+      "function": "test_perception_pipeline_fallbacks",
+      "line": 319,
+      "classification": "SYNTHETIC",
+      "docstring": ""
+    },
+    {
+      "file": "test_computer_use_engine.py",
+      "class": "TestComputerUseEngine",
+      "function": "test_target_reference_validation_hierarchy",
+      "line": 355,
+      "classification": "SYNTHETIC",
+      "docstring": ""
+    },
+    {
+      "file": "test_computer_use_engine.py",
+      "class": "TestComputerUseEngine",
+      "function": "test_structural_type_not_send_invariant",
+      "line": 422,
+      "classification": "SYNTHETIC",
+      "docstring": ""
+    },
+    {
+      "file": "test_computer_use_engine.py",
+      "class": "TestComputerUseEngine",
+      "function": "test_click_verification_requires_state_delta_or_postcondition",
+      "line": 441,
+      "classification": "SYNTHETIC",
+      "docstring": ""
+    },
+    {
+      "file": "test_computer_use_engine.py",
+      "class": "TestComputerUseEngine",
+      "function": "test_scroll_verification_requires_content_revelation",
+      "line": 492,
+      "classification": "SYNTHETIC",
+      "docstring": ""
+    },
+    {
+      "file": "test_computer_use_engine.py",
+      "class": "TestComputerUseEngine",
+      "function": "test_custom_postcondition_zero_fake_success",
+      "line": 532,
+      "classification": "SYNTHETIC",
+      "docstring": ""
+    },
+    {
+      "file": "test_computer_use_engine.py",
+      "class": "TestChunk2AuthenticityRegressions",
+      "function": "test_regression_01_is_application_running_tri_state",
+      "line": 569,
+      "classification": "SYNTHETIC",
+      "docstring": ""
+    },
+    {
+      "file": "test_computer_use_engine.py",
+      "class": "TestChunk2AuthenticityRegressions",
+      "function": "test_regression_02_type_into_element_no_computer_state_is_unknown",
+      "line": 593,
+      "classification": "SYNTHETIC",
+      "docstring": ""
+    },
+    {
+      "file": "test_computer_use_engine.py",
+      "class": "TestChunk2AuthenticityRegressions",
+      "function": "test_regression_03_send_key_chord_no_independent_effect_is_unknown",
+      "line": 613,
+      "classification": "SYNTHETIC",
+      "docstring": ""
+    },
+    {
+      "file": "test_computer_use_engine.py",
+      "class": "TestChunk2AuthenticityRegressions",
+      "function": "test_regression_04_focus_element_no_computer_state_is_unknown",
+      "line": 631,
+      "classification": "SYNTHETIC",
+      "docstring": ""
+    },
+    {
+      "file": "test_computer_use_engine.py",
+      "class": "TestChunk2AuthenticityRegressions",
+      "function": "test_regression_05_mutating_action_no_postcondition_is_unknown",
+      "line": 650,
+      "classification": "SYNTHETIC",
+      "docstring": ""
+    },
+    {
+      "file": "test_computer_use_engine.py",
+      "class": "TestChunk2AuthenticityRegressions",
+      "function": "test_regression_06_ambiguous_target_dispatches_zero_actions",
+      "line": 680,
+      "classification": "SYNTHETIC",
+      "docstring": ""
+    },
+    {
+      "file": "test_computer_use_engine.py",
+      "class": "TestChunk2AuthenticityRegressions",
+      "function": "test_regression_07_stale_target_dispatches_zero_actions",
+      "line": 702,
+      "classification": "SYNTHETIC",
+      "docstring": ""
+    },
+    {
+      "file": "test_computer_use_engine.py",
+      "class": "TestChunk2AuthenticityRegressions",
+      "function": "test_regression_08_grounding_failure_in_live_test_strictly_fails",
+      "line": 725,
+      "classification": "SYNTHETIC",
+      "docstring": ""
+    },
+    {
+      "file": "test_computer_use_engine.py",
+      "class": "TestChunk2AuthenticityRegressions",
+      "function": "test_regression_09_fake_post_state_classified_as_synthetic",
+      "line": 746,
+      "classification": "SYNTHETIC",
+      "docstring": ""
+    },
+    {
+      "file": "test_computer_use_engine.py",
+      "class": "TestChunk2AuthenticityRegressions",
+      "function": "test_regression_10_missing_live_side_effect_fails_report",
+      "line": 762,
+      "classification": "SYNTHETIC",
+      "docstring": ""
+    },
+    {
+      "file": "test_computer_use_grounding.py",
+      "class": "TestComputerUseGrounding",
+      "function": "test_exact_title_match",
+      "line": 61,
+      "classification": "SYNTHETIC",
+      "docstring": "Exact title match resolves with EXACT or STRONG confidence and is_reliable=True."
+    },
+    {
+      "file": "test_computer_use_grounding.py",
+      "class": "TestComputerUseGrounding",
+      "function": "test_description_and_placeholder_match",
+      "line": 73,
+      "classification": "SYNTHETIC",
+      "docstring": "Description match finds elements when accessible title is empty."
+    },
+    {
+      "file": "test_computer_use_grounding.py",
+      "class": "TestComputerUseGrounding",
+      "function": "test_role_alias_resolution",
+      "line": 83,
+      "classification": "SYNTHETIC",
+      "docstring": "Standard alias 'text_area' or 'input' resolves to AXTextArea."
+    },
+    {
+      "file": "test_computer_use_grounding.py",
+      "class": "TestComputerUseGrounding",
+      "function": "test_nonexistent_element_returns_none",
+      "line": 93,
+      "classification": "SYNTHETIC",
+      "docstring": "Constraints matching no elements return NONE confidence and is_reliable=False."
+    },
+    {
+      "file": "test_computer_use_grounding.py",
+      "class": "TestComputerUseGrounding",
+      "function": "test_ambiguity_rejection",
+      "line": 104,
+      "classification": "SYNTHETIC",
+      "docstring": "Multiple conflicting candidates with identical scores trigger ambiguity refusal."
+    },
+    {
+      "file": "test_diagnostics.py",
+      "class": "TestDiagnostics",
+      "function": "test_system_diagnostics_query",
+      "line": 10,
+      "classification": "UNIT",
+      "docstring": ""
+    },
+    {
+      "file": "test_diagnostics.py",
+      "class": "TestDiagnostics",
+      "function": "test_macos_permissions_check",
+      "line": 24,
+      "classification": "UNIT",
+      "docstring": ""
+    },
+    {
+      "file": "test_goal_verification.py",
+      "class": "TestGoalVerification",
+      "function": "test_deterministic_file_verification",
+      "line": 18,
+      "classification": "SYNTHETIC",
+      "docstring": "Verify write_file is verified by checking real file presence and size."
+    },
+    {
+      "file": "test_goal_verification.py",
+      "class": "TestGoalVerification",
+      "function": "test_deterministic_application_verification",
+      "line": 43,
+      "classification": "SYNTHETIC",
+      "docstring": "Application launch must verify process presence, not just command success."
+    },
+    {
+      "file": "test_goal_verification.py",
+      "class": "TestGoalVerification",
+      "function": "test_goal_evaluator_requires_all_mandatory_steps",
+      "line": 73,
+      "classification": "SYNTHETIC",
+      "docstring": "Goal is UNSATISFIED if required steps remain in the queue."
+    },
+    {
+      "file": "test_goal_verification.py",
+      "class": "TestGoalVerification",
+      "function": "test_goal_unknown_when_step_verification_unknown",
+      "line": 99,
+      "classification": "SYNTHETIC",
+      "docstring": "When a required step has status UNKNOWN, goal must report UNKNOWN, not SUCCESS."
+    },
+    {
+      "file": "test_goal_verification.py",
+      "class": "TestGoalVerification",
+      "function": "test_agent_core_closed_loop_satisfaction",
+      "line": 127,
+      "classification": "SYNTHETIC",
+      "docstring": "AgentCore terminates with SATISFIED when all steps are verified."
+    },
+    {
+      "file": "test_goal_verification.py",
+      "class": "TestGoalVerification",
+      "function": "test_browser_unverified_action_returns_unknown",
+      "line": 150,
+      "classification": "SYNTHETIC",
+      "docstring": "Browser open_url action without tab/page verification returns UNKNOWN, never SATISFIED."
+    },
+    {
+      "file": "test_goal_verification.py",
+      "class": "TestGoalVerification",
+      "function": "test_accessibility_unverified_action_returns_unknown",
+      "line": 159,
+      "classification": "SYNTHETIC",
+      "docstring": "Accessibility mutating click/shortcut action without GUI state verification returns UNKNOWN."
+    },
+    {
+      "file": "test_goal_verification.py",
+      "class": "TestGoalVerification",
+      "function": "test_macos_unverified_action_returns_unknown",
+      "line": 168,
+      "classification": "SYNTHETIC",
+      "docstring": "macOS show_notification action without state verification returns UNKNOWN."
+    },
+    {
+      "file": "test_goal_verification.py",
+      "class": "TestGoalVerification",
+      "function": "test_unhandled_capability_returns_unknown",
+      "line": 177,
+      "classification": "SYNTHETIC",
+      "docstring": "Arbitrary unhandled capability returns UNKNOWN, never SATISFIED merely because res.success=True."
+    },
+    {
+      "file": "test_model_routing.py",
+      "class": "TestModelRouting",
+      "function": "test_classify_model_capabilities",
+      "line": 13,
+      "classification": "UNIT",
+      "docstring": "Verify model classification rules."
+    },
+    {
+      "file": "test_model_routing.py",
+      "class": "TestModelRouting",
+      "function": "test_reasoning_never_selects_embedding_model",
+      "line": 29,
+      "classification": "UNIT",
+      "docstring": "Verify that embedding models are never selected for reasoning tasks."
+    },
+    {
+      "file": "test_model_routing.py",
+      "class": "TestModelRouting",
+      "function": "test_vision_model_resolution",
+      "line": 41,
+      "classification": "UNIT",
+      "docstring": "Verify vision capability resolves to a vision model or fails closed."
+    },
+    {
+      "file": "test_model_routing.py",
+      "class": "TestModelRouting",
+      "function": "test_vision_fails_closed_when_no_vision_model_installed",
+      "line": 55,
+      "classification": "UNIT",
+      "docstring": "Verify vision resolution returns None rather than falling back to text model."
+    },
+    {
+      "file": "test_model_routing.py",
+      "class": "TestModelRouting",
+      "function": "test_planner_runtime_invokes_model_resolution",
+      "line": 68,
+      "classification": "UNIT",
+      "docstring": "Verify Planner.create_plan actively invokes model_manager.verify_and_resolve_model."
+    },
+    {
+      "file": "test_model_routing.py",
+      "class": "TestModelRouting",
+      "function": "test_vision_provider_uses_central_model_manager",
+      "line": 83,
+      "classification": "UNIT",
+      "docstring": "Verify OllamaVisionProvider delegates model resolution to central ModelManager."
+    },
+    {
+      "file": "test_native_accessibility_tree.py",
+      "class": "TestNativeAccessibilityTree",
+      "function": "test_01_ui_element_serialization",
+      "line": 28,
+      "classification": "HYBRID",
+      "docstring": "Verify UIElement model serialization and deserialization."
+    },
+    {
+      "file": "test_native_accessibility_tree.py",
+      "class": "TestNativeAccessibilityTree",
+      "function": "test_02_computer_state_serialization",
+      "line": 54,
+      "classification": "HYBRID",
+      "docstring": "Verify ComputerState serialization with window state and metadata."
+    },
+    {
+      "file": "test_native_accessibility_tree.py",
+      "class": "TestNativeAccessibilityTree",
+      "function": "test_03_recursive_traversal_and_flattening",
+      "line": 84,
+      "classification": "HYBRID",
+      "docstring": "Verify recursive tree structure preserves hierarchy and flattens correctly."
+    },
+    {
+      "file": "test_native_accessibility_tree.py",
+      "class": "TestNativeAccessibilityTree",
+      "function": "test_04_budget_enforcement_in_native_output",
+      "line": 123,
+      "classification": "HYBRID",
+      "docstring": "Verify parse handles truncation reasons from budget enforcement."
+    },
+    {
+      "file": "test_native_accessibility_tree.py",
+      "class": "TestNativeAccessibilityTree",
+      "function": "test_05_missing_attributes_zero_hallucination",
+      "line": 141,
+      "classification": "HYBRID",
+      "docstring": "Verify missing attributes remain None/empty and are NEVER fabricated."
+    },
+    {
+      "file": "test_native_accessibility_tree.py",
+      "class": "TestNativeAccessibilityTree",
+      "function": "test_06_missing_bounds_never_default_to_zero_or_screen",
+      "line": 163,
+      "classification": "HYBRID",
+      "docstring": "Verify that elements with no bounds do not receive fake coordinates like (0,0)."
+    },
+    {
+      "file": "test_native_accessibility_tree.py",
+      "class": "TestNativeAccessibilityTree",
+      "function": "test_07_action_discovery_strictly_real",
+      "line": 175,
+      "classification": "HYBRID",
+      "docstring": "Verify real AX action names are preserved and not inferred by role heuristics."
+    },
+    {
+      "file": "test_native_accessibility_tree.py",
+      "class": "TestNativeAccessibilityTree",
+      "function": "test_08_focus_detection_real_source_of_truth",
+      "line": 190,
+      "classification": "HYBRID",
+      "docstring": "Verify focused element is captured directly from accessibility."
+    },
+    {
+      "file": "test_native_accessibility_tree.py",
+      "class": "TestNativeAccessibilityTree",
+      "function": "test_09_permission_denied_behavior_explicit_not_empty",
+      "line": 212,
+      "classification": "HYBRID",
+      "docstring": "Verify accessibility permission failure returns explicit ACCESSIBILITY_DENIED status."
+    },
+    {
+      "file": "test_native_accessibility_tree.py",
+      "class": "TestNativeAccessibilityTree",
+      "function": "test_10_malformed_native_response_handling",
+      "line": 223,
+      "classification": "HYBRID",
+      "docstring": "Verify unexpected/malformed native response degrades gracefully."
+    },
+    {
+      "file": "test_native_accessibility_tree.py",
+      "class": "TestNativeAccessibilityTree",
+      "function": "test_11_state_delta_computation",
+      "line": 229,
+      "classification": "HYBRID",
+      "docstring": "Verify ComputerState.compute_delta computes accurate deltas between state A and B."
+    },
+    {
+      "file": "test_native_accessibility_tree.py",
+      "class": "TestNativeAccessibilityTree",
+      "function": "test_12_compact_prompt_projection_separation",
+      "line": 260,
+      "classification": "HYBRID",
+      "docstring": "Verify compact prompt projection is cleanly separated from raw state."
+    },
+    {
+      "file": "test_native_accessibility_tree.py",
+      "class": "TestNativeAccessibilityTree",
+      "function": "test_13_cache_invalidation_lifecycle",
+      "line": 284,
+      "classification": "HYBRID",
+      "docstring": "Verify AccessibilityTreeExtractor cache invalidation behavior."
+    },
+    {
+      "file": "test_native_accessibility_tree.py",
+      "class": "TestNativeAccessibilityTree",
+      "function": "test_14_observer_integration",
+      "line": 308,
+      "classification": "HYBRID",
+      "docstring": "Verify agent Observer consumes rich state and stores last_computer_state."
+    },
+    {
+      "file": "test_native_accessibility_tree.py",
+      "class": "TestNativeAccessibilityTree",
+      "function": "test_15_context_integration",
+      "line": 329,
+      "classification": "HYBRID",
+      "docstring": "Verify AgentContext.to_prompt_dict includes focused control and visible windows."
+    },
+    {
+      "file": "test_native_accessibility_tree.py",
+      "class": "TestNativeAccessibilityTree",
+      "function": "test_16_truncation_status_and_traversal_statistics",
+      "line": 350,
+      "classification": "HYBRID",
+      "docstring": "Verify truncation marks status as PARTIAL and captures detailed traversal stats."
+    },
+    {
+      "file": "test_native_accessibility_tree.py",
+      "class": "TestNativeAccessibilityTree",
+      "function": "test_17_multi_window_tree_isolation",
+      "line": 379,
+      "classification": "HYBRID",
+      "docstring": "Verify multiple windows are represented with distinct paths and no tree merging."
+    },
+    {
+      "file": "test_native_accessibility_tree.py",
+      "class": "TestNativeAccessibilityTree",
+      "function": "test_18_missing_attributes_optional_bools",
+      "line": 419,
+      "classification": "HYBRID",
+      "docstring": "Verify that missing attributes in native node remain None, not fabricated booleans."
+    },
+    {
+      "file": "test_native_accessibility_tree.py",
+      "class": "TestNativeAccessibilityTree",
+      "function": "test_19_cache_pid_isolation",
+      "line": 431,
+      "classification": "HYBRID",
+      "docstring": "Verify that changing frontmost application PID busts cache even if app name is identical."
+    },
+    {
+      "file": "test_native_accessibility_tree.py",
+      "class": "TestNativeAccessibilityTree",
+      "function": "test_20_force_refresh_bypasses_cache",
+      "line": 447,
+      "classification": "HYBRID",
+      "docstring": "Verify that force_refresh=True explicitly forces a fresh observation bypassing TTL."
+    },
+    {
+      "file": "test_native_accessibility_tree.py",
+      "class": "TestNativeAccessibilityTree",
+      "function": "test_21_live_macos_native_backend_execution",
+      "line": 466,
+      "classification": "LIVE_MACOS",
+      "docstring": "Phase 12: Real LIVE MACOS test invoking bin/max-ax-dump on Darwin without mocks."
+    },
+    {
+      "file": "test_planner.py",
+      "class": "TestPlanner",
+      "function": "test_clean_json_response_with_markdown",
+      "line": 10,
+      "classification": "UNIT",
+      "docstring": ""
+    },
+    {
+      "file": "test_planner.py",
+      "class": "TestPlanner",
+      "function": "test_clean_json_response_plain",
+      "line": 30,
+      "classification": "UNIT",
+      "docstring": ""
+    },
+    {
+      "file": "test_planner.py",
+      "class": "TestPlanner",
+      "function": "test_build_planning_prompt_contains_rules",
+      "line": 34,
+      "classification": "UNIT",
+      "docstring": ""
+    },
+    {
+      "file": "test_risk.py",
+      "class": "TestSecurityRiskEngine",
+      "function": "test_blocked_catastrophic_commands",
+      "line": 14,
+      "classification": "UNIT",
+      "docstring": ""
+    },
+    {
+      "file": "test_risk.py",
+      "class": "TestSecurityRiskEngine",
+      "function": "test_high_risk_commands_requiring_confirmation",
+      "line": 28,
+      "classification": "UNIT",
+      "docstring": ""
+    },
+    {
+      "file": "test_risk.py",
+      "class": "TestSecurityRiskEngine",
+      "function": "test_safe_read_only_commands",
+      "line": 42,
+      "classification": "UNIT",
+      "docstring": ""
+    },
+    {
+      "file": "test_risk.py",
+      "class": "TestSecurityRiskEngine",
+      "function": "test_protected_path_assessment",
+      "line": 59,
+      "classification": "UNIT",
+      "docstring": ""
+    },
+    {
+      "file": "test_risk.py",
+      "class": "TestSecurityRiskEngine",
+      "function": "test_policy_violation_raises",
+      "line": 65,
+      "classification": "UNIT",
+      "docstring": ""
+    },
+    {
+      "file": "test_security_hardening.py",
+      "class": "TestSecurityHardening",
+      "function": "test_blocked_commands_raise_policy_violation",
+      "line": 19,
+      "classification": "UNIT",
+      "docstring": "BLOCKED operations must strictly raise PolicyViolation and never execute."
+    },
+    {
+      "file": "test_security_hardening.py",
+      "class": "TestSecurityHardening",
+      "function": "test_high_risk_requires_confirmation",
+      "line": 33,
+      "classification": "UNIT",
+      "docstring": "HIGH risk operations require affirmative user confirmation."
+    },
+    {
+      "file": "test_security_hardening.py",
+      "class": "TestSecurityHardening",
+      "function": "test_applescript_string_escaping",
+      "line": 47,
+      "classification": "UNIT",
+      "docstring": "AppleScript string escaping neutralizes injection characters."
+    },
+    {
+      "file": "test_security_hardening.py",
+      "class": "TestSecurityHardening",
+      "function": "test_audit_log_cryptographic_hash_chaining",
+      "line": 56,
+      "classification": "UNIT",
+      "docstring": "Audit trail must be cryptographically chained via SHA-256 and detect tampering."
+    },
+    {
+      "file": "test_security_hardening.py",
+      "class": "TestSecurityHardening",
+      "function": "test_sensitive_data_redaction",
+      "line": 92,
+      "classification": "UNIT",
+      "docstring": "Sensitive tokens, keys, and passwords must be redacted before persistence."
+    },
+    {
+      "file": "test_soak.py",
+      "class": "TestSoakSuite",
+      "function": "test_mini_soak_run",
+      "line": 261,
+      "classification": "LIVE_SUBSYSTEM",
+      "docstring": ""
+    },
+    {
+      "file": "test_tasks.py",
+      "class": "TestTaskAndEventEngine",
+      "function": "test_task_id_generation",
+      "line": 56,
+      "classification": "LIVE_SUBSYSTEM",
+      "docstring": "[UNIT TEST] Verify task ID format and collision resistance."
+    },
+    {
+      "file": "test_tasks.py",
+      "class": "TestTaskAndEventEngine",
+      "function": "test_task_creation_and_persistence",
+      "line": 64,
+      "classification": "LIVE_SUBSYSTEM",
+      "docstring": "[UNIT TEST] Verify task creation, SQLite persistence, and retrieval."
+    },
+    {
+      "file": "test_tasks.py",
+      "class": "TestTaskAndEventEngine",
+      "function": "test_unknown_task_id",
+      "line": 82,
+      "classification": "LIVE_SUBSYSTEM",
+      "docstring": "[UNIT TEST] Querying or terminating non-existent task returns clean None or error."
+    },
+    {
+      "file": "test_tasks.py",
+      "class": "TestTaskAndEventEngine",
+      "function": "test_process_launch_and_stdout_capture",
+      "line": 94,
+      "classification": "LIVE_SUBSYSTEM",
+      "docstring": "[LIVE MAC TEST] Launch real background process, verify PID/PGID and stdout capture."
+    },
+    {
+      "file": "test_tasks.py",
+      "class": "TestTaskAndEventEngine",
+      "function": "test_process_non_zero_exit_and_stderr",
+      "line": 111,
+      "classification": "LIVE_SUBSYSTEM",
+      "docstring": "[LIVE MAC TEST] Process exiting non-zero transitions to FAILED with captured error."
+    },
+    {
+      "file": "test_tasks.py",
+      "class": "TestTaskAndEventEngine",
+      "function": "test_task_cancellation_and_process_tree_cleanup",
+      "line": 123,
+      "classification": "LIVE_SUBSYSTEM",
+      "docstring": "[LIVE MAC TEST] Cancel a long-running process group, ensuring child processes are killed."
+    },
+    {
+      "file": "test_tasks.py",
+      "class": "TestTaskAndEventEngine",
+      "function": "test_task_timeout",
+      "line": 143,
+      "classification": "LIVE_SUBSYSTEM",
+      "docstring": "[LIVE MAC TEST] Enforce maximum runtime timeout on runaway task."
+    },
+    {
+      "file": "test_tasks.py",
+      "class": "TestTaskAndEventEngine",
+      "function": "test_restart_reconciliation",
+      "line": 157,
+      "classification": "LIVE_SUBSYSTEM",
+      "docstring": "[LIVE MAC TEST] Tasks left in RUNNING whose PID is dead are reconciled on startup."
+    },
+    {
+      "file": "test_tasks.py",
+      "class": "TestTaskAndEventEngine",
+      "function": "test_event_subscription_and_wait_for",
+      "line": 180,
+      "classification": "LIVE_SUBSYSTEM",
+      "docstring": "[UNIT TEST] Verify EventBus publish/subscribe and deterministic wait_for."
+    },
+    {
+      "file": "test_tasks.py",
+      "class": "TestTaskAndEventEngine",
+      "function": "test_filesystem_watcher_lifecycle_and_events",
+      "line": 209,
+      "classification": "LIVE_SUBSYSTEM",
+      "docstring": "[LIVE MAC TEST] DirectoryWatcher observes file creation and modification with debouncing."
+    },
+    {
+      "file": "test_tasks.py",
+      "class": "TestTaskAndEventEngine",
+      "function": "test_task_capability_operations",
+      "line": 255,
+      "classification": "LIVE_SUBSYSTEM",
+      "docstring": "[LIVE MAC TEST] TaskCapability executes start, status, list, and kill operations."
+    },
+    {
+      "file": "test_tasks.py",
+      "class": "TestProcessIdentity",
+      "function": "test_process_start_time_valid_pid",
+      "line": 297,
+      "classification": "LIVE_SUBSYSTEM",
+      "docstring": "Valid running PID returns non-empty start time."
+    },
+    {
+      "file": "test_tasks.py",
+      "class": "TestProcessIdentity",
+      "function": "test_process_start_time_invalid_pid",
+      "line": 304,
+      "classification": "LIVE_SUBSYSTEM",
+      "docstring": "Invalid PID (<= 0) returns None."
+    },
+    {
+      "file": "test_tasks.py",
+      "class": "TestProcessIdentity",
+      "function": "test_process_start_time_dead_pid",
+      "line": 310,
+      "classification": "LIVE_SUBSYSTEM",
+      "docstring": "Dead / non-existent PID returns None."
+    },
+    {
+      "file": "test_tasks.py",
+      "class": "TestProcessIdentity",
+      "function": "test_process_start_time_native_success",
+      "line": 314,
+      "classification": "LIVE_SUBSYSTEM",
+      "docstring": "On macOS, native libproc extracts high-precision start time."
+    },
+    {
+      "file": "test_tasks.py",
+      "class": "TestProcessIdentity",
+      "function": "test_process_start_time_fallback_to_ps",
+      "line": 324,
+      "classification": "LIVE_SUBSYSTEM",
+      "docstring": "When native fails, get_process_start_time falls back to _get_ps_start_time."
+    },
+    {
+      "file": "test_tasks.py",
+      "class": "TestProcessIdentity",
+      "function": "test_process_start_time_both_unavailable",
+      "line": 332,
+      "classification": "LIVE_SUBSYSTEM",
+      "docstring": "When both native and ps fail, returns None without fabricating timestamps."
+    },
+    {
+      "file": "test_tasks.py",
+      "class": "TestProcessIdentity",
+      "function": "test_start_time_matching_semantics",
+      "line": 339,
+      "classification": "LIVE_SUBSYSTEM",
+      "docstring": "Matches identical strings, or epoch float vs ps ctime within 1s tolerance."
+    },
+    {
+      "file": "test_tasks.py",
+      "class": "TestProcessIdentity",
+      "function": "test_pid_reuse_reconciliation",
+      "line": 359,
+      "classification": "LIVE_SUBSYSTEM",
+      "docstring": "Reconciliation marks task UNKNOWN if PID was reused with different start time."
+    },
+    {
+      "file": "test_tasks.py",
+      "class": "TestProcessIdentity",
+      "function": "test_pid_reuse_refuses_termination",
+      "line": 378,
+      "classification": "LIVE_SUBSYSTEM",
+      "docstring": "Supervisor refuses to kill an unrelated process if start time does not match."
+    },
+    {
+      "file": "test_vision.py",
+      "class": "TestVisionSubsystem",
+      "function": "test_screen_capture_permissions_granted",
+      "line": 58,
+      "classification": "MOCKED",
+      "docstring": "[MOCKED TEST] test_screen_capture_permissions: Verify capture proceeds when permission is granted."
+    },
+    {
+      "file": "test_vision.py",
+      "class": "TestVisionSubsystem",
+      "function": "test_permission_failure",
+      "line": 85,
+      "classification": "MOCKED",
+      "docstring": "[MOCKED TEST] test_permission_failure: Verify clear failure and user guidance when permission is denied."
+    },
+    {
+      "file": "test_vision.py",
+      "class": "TestVisionSubsystem",
+      "function": "test_screen_dimensions",
+      "line": 104,
+      "classification": "MOCKED",
+      "docstring": "[LIVE MAC TEST] test_screen_dimensions: Discover real connected displays and verify positive dimensions."
+    },
+    {
+      "file": "test_vision.py",
+      "class": "TestVisionSubsystem",
+      "function": "test_vision_provider",
+      "line": 119,
+      "classification": "MOCKED",
+      "docstring": "[MOCKED TEST] test_vision_provider: Verify OllamaVisionProvider abstraction and response model."
+    },
+    {
+      "file": "test_vision.py",
+      "class": "TestVisionSubsystem",
+      "function": "test_invalid_coordinates",
+      "line": 148,
+      "classification": "MOCKED",
+      "docstring": "[MOCKED TEST] test_invalid_coordinates: Reject coordinates outside display point bounds."
+    },
+    {
+      "file": "test_vision.py",
+      "class": "TestVisionSubsystem",
+      "function": "test_target_validation",
+      "line": 174,
+      "classification": "MOCKED",
+      "docstring": "[MOCKED TEST] test_target_validation: Verify ScreenAnalyzer parses and validates normalized targets."
+    },
+    {
+      "file": "test_vision.py",
+      "class": "TestVisionSubsystem",
+      "function": "test_invalid_model_output",
+      "line": 194,
+      "classification": "MOCKED",
+      "docstring": "[MOCKED TEST] test_invalid_model_output: Reject malformed, unparseable, or hallucinatory model responses."
+    },
+    {
+      "file": "test_vision.py",
+      "class": "TestVisionSubsystem",
+      "function": "test_risk_integration",
+      "line": 213,
+      "classification": "MOCKED",
+      "docstring": "[MOCKED TEST] test_risk_integration: Detect destructive and sensitive keywords on visual targets."
+    },
+    {
+      "file": "test_vision.py",
+      "class": "TestVisionSubsystem",
+      "function": "test_confirmation",
+      "line": 235,
+      "classification": "MOCKED",
+      "docstring": "[MOCKED TEST] test_confirmation: Enforce user confirmation policy on high-risk visual actions."
+    },
+    {
+      "file": "test_vision.py",
+      "class": "TestVisionSubsystem",
+      "function": "test_verification",
+      "line": 271,
+      "classification": "MOCKED",
+      "docstring": "[MOCKED TEST] test_verification: Closed-loop verification queries post-action screen and reports result."
+    },
+    {
+      "file": "test_vision_correctness.py",
+      "class": "TestVisionCorrectness",
+      "function": "test_screen_changed_alone_is_not_verified",
+      "line": 26,
+      "classification": "MOCKED",
+      "docstring": "ISSUE B1: Screen delta must NOT produce verified=True if goal is unsatisfied."
+    },
+    {
+      "file": "test_vision_correctness.py",
+      "class": "TestVisionCorrectness",
+      "function": "test_vision_provider_failure_returns_unknown",
+      "line": 66,
+      "classification": "MOCKED",
+      "docstring": "ISSUE B2: Vision model failure must return UNKNOWN, never fallback to screen difference."
+    },
+    {
+      "file": "test_vision_correctness.py",
+      "class": "TestVisionCorrectness",
+      "function": "test_malformed_vlm_output_returns_unknown",
+      "line": 101,
+      "classification": "MOCKED",
+      "docstring": "ISSUE B5: Malformed VLM output must return UNKNOWN, never SUCCESS."
+    },
+    {
+      "file": "test_voice.py",
+      "class": "TestVoice",
+      "function": "test_list_available_voices",
+      "line": 10,
+      "classification": "UNIT",
+      "docstring": ""
+    },
+    {
+      "file": "test_voice.py",
+      "class": "TestVoice",
+      "function": "test_speak_empty_text_noop",
+      "line": 16,
+      "classification": "UNIT",
+      "docstring": ""
+    },
+    {
+      "file": "test_voice.py",
+      "class": "TestVoice",
+      "function": "test_whisper_availability_check",
+      "line": 21,
+      "classification": "UNIT",
+      "docstring": ""
+    },
+    {
+      "file": "test_voice.py",
+      "class": "TestVoice",
+      "function": "test_transcribe_missing_audio_file",
+      "line": 26,
+      "classification": "UNIT",
+      "docstring": ""
+    },
+    {
+      "file": "test_voice_reliability.py",
+      "class": "TestVoiceReliability",
+      "function": "test_voice_states_enumeration",
+      "line": 15,
+      "classification": "MOCKED",
+      "docstring": "Verify all required states exist in VoiceState enum."
+    },
+    {
+      "file": "test_voice_reliability.py",
+      "class": "TestVoiceReliability",
+      "function": "test_cancel_command_detection",
+      "line": 25,
+      "classification": "MOCKED",
+      "docstring": "Verify various forms of cancellation triggers are recognized."
+    },
+    {
+      "file": "test_voice_reliability.py",
+      "class": "TestVoiceReliability",
+      "function": "test_earcon_missing_file_fallback",
+      "line": 40,
+      "classification": "MOCKED",
+      "docstring": "Verify play_earcon handles nonexistent audio files gracefully without crashing."
+    },
+    {
+      "file": "test_voice_reliability.py",
+      "class": "TestVoiceReliability",
+      "function": "test_earcon_valid_system_sound",
+      "line": 50,
+      "classification": "MOCKED",
+      "docstring": "Verify play_earcon works with standard macOS system sound if present."
+    },
+    {
+      "file": "test_voice_reliability.py",
+      "class": "TestVoiceReliability",
+      "function": "test_voice_assistant_watchdog_triggers_on_stuck_state",
+      "line": 58,
+      "classification": "MOCKED",
+      "docstring": "Verify watchdog detects stuck state and recovers to IDLE."
+    },
+    {
+      "file": "test_voice_reliability.py",
+      "class": "TestVoiceReliability",
+      "function": "test_voice_assistant_watchdog_does_not_trigger_when_idle",
+      "line": 69,
+      "classification": "MOCKED",
+      "docstring": "Verify watchdog does not trigger when assistant is legitimately IDLE."
+    },
+    {
+      "file": "test_voice_reliability.py",
+      "class": "TestVoiceReliability",
+      "function": "test_async_speech_and_stop",
+      "line": 79,
+      "classification": "MOCKED",
+      "docstring": "Verify speak_async starts without blocking and stop_speaking terminates it."
+    },
+    {
+      "file": "test_wake_word.py",
+      "class": "TestWakeWordAndAssistant",
+      "function": "test_standalone_wake_words",
+      "line": 16,
+      "classification": "MOCKED",
+      "docstring": "Test detection of standalone wake word calls without inline commands."
+    },
+    {
+      "file": "test_wake_word.py",
+      "class": "TestWakeWordAndAssistant",
+      "function": "test_inline_command_extraction",
+      "line": 39,
+      "classification": "MOCKED",
+      "docstring": "Test extraction of inline tasks spoken in the same breath as the wake word."
+    },
+    {
+      "file": "test_wake_word.py",
+      "class": "TestWakeWordAndAssistant",
+      "function": "test_negative_cases_no_false_positives",
+      "line": 55,
+      "classification": "MOCKED",
+      "docstring": "Ensure non-wake words and partial matches do not trigger activation."
+    },
+    {
+      "file": "test_wake_word.py",
+      "class": "TestWakeWordAndAssistant",
+      "function": "test_custom_wake_word",
+      "line": 72,
+      "classification": "MOCKED",
+      "docstring": "Verify custom wake words can be configured."
+    },
+    {
+      "file": "test_wake_word.py",
+      "class": "TestWakeWordAndAssistant",
+      "function": "test_voice_assistant_execute_task",
+      "line": 83,
+      "classification": "MOCKED",
+      "docstring": "Verify VoiceAssistant dispatches task to AgentCore and speaks outcome."
+    },
+    {
+      "file": "test_wake_word.py",
+      "class": "TestWakeWordAndAssistant",
+      "function": "test_voice_assistant_step_standalone_cycle",
+      "line": 101,
+      "classification": "MOCKED",
+      "docstring": "Test full step cycle when user says standalone 'Max' followed by a command with earcon."
+    },
+    {
+      "file": "test_wake_word.py",
+      "class": "TestWakeWordAndAssistant",
+      "function": "test_voice_assistant_step_inline_cycle",
+      "line": 132,
+      "classification": "MOCKED",
+      "docstring": "Test full step cycle when user says one-shot 'Max, open terminal' with spoken ack."
+    },
+    {
+      "file": "test_workflows.py",
+      "class": "TestWorkflows",
+      "function": "test_save_and_get_workflow",
+      "line": 18,
+      "classification": "MOCKED",
+      "docstring": ""
+    },
+    {
+      "file": "test_workflows.py",
+      "class": "TestWorkflows",
+      "function": "test_list_workflows",
+      "line": 39,
+      "classification": "MOCKED",
+      "docstring": ""
+    },
+    {
+      "file": "test_workflows.py",
+      "class": "TestWorkflows",
+      "function": "test_execute_workflow_tool_succeeds_and_goal_verified_satisfied",
+      "line": 47,
+      "classification": "MOCKED",
+      "docstring": "TEST A: tool succeeds + goal verified -> SATISFIED."
+    },
+    {
+      "file": "test_workflows.py",
+      "class": "TestWorkflows",
+      "function": "test_execute_workflow_tool_succeeds_but_state_not_achieved_unsatisfied",
+      "line": 63,
+      "classification": "MOCKED",
+      "docstring": "TEST B: tool succeeds + state not achieved in OS -> UNSATISFIED."
+    },
+    {
+      "file": "test_workflows.py",
+      "class": "TestWorkflows",
+      "function": "test_execute_workflow_tool_succeeds_but_verification_unknown",
+      "line": 80,
+      "classification": "MOCKED",
+      "docstring": "TEST C: tool succeeds + verification unavailable -> UNKNOWN."
+    },
+    {
+      "file": "test_workflows.py",
+      "class": "TestWorkflows",
+      "function": "test_execute_workflow_never_success_from_res_success_alone",
+      "line": 102,
+      "classification": "MOCKED",
+      "docstring": "TEST D: workflow can never return successful overall status from res.success alone."
+    }
+  ]
+}

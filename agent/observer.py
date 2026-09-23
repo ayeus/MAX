@@ -2,12 +2,15 @@
 
 Captures real operating system state, active application, current directory,
 and running processes before and after actions. Never fabricates state.
+Consumes rich ComputerState and produces task-relevant compact projections.
 """
 
-from pathlib import Path
-from typing import Any
-from pydantic import BaseModel
 import os
+from pathlib import Path
+from typing import Any, Optional
+from pydantic import BaseModel, Field
+
+from capabilities.accessibility.models import ComputerState
 from macos.applescript import run_applescript
 from macos.shell import run_shell_command
 
@@ -16,10 +19,11 @@ class EnvironmentObservation(BaseModel):
     current_directory: str
     active_application: str
     active_window: str = ""
-    recent_processes: list[str] = []
-    clipboard_preview: str | None = None
-    ui_summary: dict[str, Any] | None = None
+    recent_processes: list[str] = Field(default_factory=list)
+    clipboard_preview: Optional[str] = None
+    ui_summary: Optional[dict[str, Any]] = None
     interactive_elements_count: int = 0
+    computer_state: Optional[ComputerState] = None
 
 
 # Alias for backward and forward compatibility
@@ -28,6 +32,9 @@ AgentObservation = EnvironmentObservation
 
 class Observer:
     """Inspects the computer state before and after actions."""
+
+    def __init__(self):
+        self.last_computer_state: Optional[ComputerState] = None
 
     def get_active_application(self) -> str:
         """Query the frontmost macOS application name via fast lsappinfo, falling back to AppleScript."""
@@ -64,7 +71,7 @@ class Observer:
             return names[:limit]
         return []
 
-    def get_clipboard_preview(self, max_chars: int = 100) -> str | None:
+    def get_clipboard_preview(self, max_chars: int = 100) -> Optional[str]:
         """Get short preview of current clipboard text."""
         res = run_shell_command("/usr/bin/pbpaste", timeout=2)
         if res.success and res.stdout.strip():
@@ -72,21 +79,24 @@ class Observer:
             return txt[:max_chars] + ("..." if len(txt) > max_chars else "")
         return None
 
-    def observe(self, fast: bool = False, include_ui: bool = True) -> EnvironmentObservation:
+    def observe(self, fast: bool = False, include_ui: bool = True, force_refresh: bool = False) -> EnvironmentObservation:
         """Perform observation of current computer state.
 
         If include_ui=True, captures active window and interactive controls.
         If fast=True, avoids expensive full process tree queries.
+        If force_refresh=True, bypasses short-lived cache for an immediate fresh snapshot.
         """
         active_app = self.get_active_application()
         active_win = ""
         ui_sum = None
         count = 0
+        state = None
 
         if include_ui:
             try:
                 from capabilities.accessibility.tree import tree_extractor
-                state = tree_extractor.get_computer_state()
+                state = tree_extractor.get_computer_state(force_refresh=force_refresh)
+                self.last_computer_state = state
                 if state.active_application and state.active_application != "Unknown":
                     active_app = state.active_application
                 active_win = state.active_window_title
@@ -103,6 +113,7 @@ class Observer:
             clipboard_preview=None if fast else self.get_clipboard_preview(),
             ui_summary=ui_sum,
             interactive_elements_count=count,
+            computer_state=state,
         )
 
 

@@ -59,15 +59,14 @@ class Planner:
             recent_history=context.recent_history,
         )
 
-        response = self.provider.generate(
-            prompt=prompt,
-            system=SYSTEM_PROMPT,
-            json_format=True,
-            temperature=0.1,
-        )
-
-        cleaned = clean_json_response(response.content)
         try:
+            response = self.provider.generate(
+                prompt=prompt,
+                system=SYSTEM_PROMPT,
+                json_format=True,
+                temperature=0.1,
+            )
+            cleaned = clean_json_response(response.content)
             parsed = json.loads(cleaned)
             if isinstance(parsed, list):
                 thought = "Executing plan to achieve outcome"
@@ -122,36 +121,16 @@ class Planner:
                 if "formulate the next" in req_lower or "steps already completed" in req_lower:
                     return Plan(thought=thought or "All necessary steps completed.", plan=[])
 
-                if "window" in req_lower:
-                    steps.append(PlanStep(
-                        step_number=1,
-                        capability="accessibility",
-                        action="get_active_window_info",
-                        args={},
-                        verification_criteria="Active window details",
-                    ))
-                else:
-                    steps.append(PlanStep(
-                        step_number=1,
-                        capability="terminal",
-                        action="execute_command",
-                        args={"command": f"echo '{user_request}'"},
-                        verification_criteria="None",
-                    ))
+                # Zero false success: do NOT generate fallback echo commands
+                return Plan(
+                    thought=thought or f"Unable to formulate executable plan for '{user_request}'",
+                    plan=[],
+                )
 
             return Plan(thought=thought, plan=steps)
         except Exception as e:
-            # Fallback if model output is not valid JSON
+            # Explicit failure representation, never run a no-op command to mask planning failure
             return Plan(
-                thought=f"Direct interpretation of task: '{user_request}'",
-                plan=[
-                    PlanStep(
-                        step_number=1,
-                        capability="terminal",
-                        action="execute_command",
-                        args={"command": f"echo 'Could not formulate plan: {e}'"},
-                        verification_criteria="None",
-                        is_optional=False,
-                    )
-                ],
+                thought=f"Planning failure for '{user_request}': {e}",
+                plan=[],
             )

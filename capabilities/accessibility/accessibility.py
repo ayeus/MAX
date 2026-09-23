@@ -60,6 +60,9 @@ class AccessibilityCapability(Capability):
                     "label": {"type": "string", "description": "Label, title, or accessible description of the element to click (e.g. 'New Document', 'Save', 'Submit')"},
                     "role": {"type": "string", "description": "Optional role constraint (e.g. 'button', 'checkbox', 'tab')"},
                     "identifier": {"type": "string", "description": "Optional accessibility identifier"},
+                    "target_path": {"type": "string", "description": "Optional direct hierarchical path in accessibility tree (e.g. AXWindow[0]/AXButton[1])"},
+                    "scope_path": {"type": "string", "description": "Optional subtree path to restrict search to"},
+                    "child_label": {"type": "string", "description": "Optional descendant text (e.g. row containing specific name)"},
                     "application_name": {"type": "string", "description": "Optional application name (defaults to frontmost)"},
                 },
                 default_risk=RiskLevel.MEDIUM,
@@ -71,6 +74,8 @@ class AccessibilityCapability(Capability):
                 parameters={
                     "text": {"type": "string", "description": "The text content to type into the field"},
                     "target_label": {"type": "string", "description": "Optional label/placeholder of the target input field (e.g. 'Search', 'Message', 'Recipient')"},
+                    "target_path": {"type": "string", "description": "Optional direct hierarchical path in accessibility tree"},
+                    "scope_path": {"type": "string", "description": "Optional subtree path to restrict search to"},
                     "clear_first": {"type": "boolean", "description": "Whether to select all and delete existing text before typing (default: false)"},
                     "press_return": {"type": "boolean", "description": "Whether to press Return/Enter after typing (default: false)"},
                     "application_name": {"type": "string", "description": "Optional application name (defaults to frontmost)"},
@@ -231,46 +236,115 @@ class AccessibilityCapability(Capability):
         label: str = "",
         role: str = "",
         identifier: str = "",
+        target_path: str = "",
+        scope_path: str = "",
+        child_label: str = "",
         application_name: str = "",
     ) -> ExecutionResult:
-        """Semantically locate and click an interactive UI element."""
+        """Semantically locate and click an interactive UI element using Accessibility-First routing."""
         audit_log.log_event(
             event_type="tool_requested",
             tool=self.name,
             action="click_element",
-            details={"label": label, "role": role, "application": application_name},
+            details={
+                "label": label,
+                "role": role,
+                "target_path": target_path,
+                "scope_path": scope_path,
+                "child_label": child_label,
+                "application": application_name,
+            },
         )
 
-        state = tree_extractor.get_computer_state(application_name=application_name if application_name.strip() else None)
-        constraints = TargetConstraints(
-            label=label if label.strip() else None,
-            role=role if role.strip() else None,
-            identifier=identifier if identifier.strip() else None,
+        state = tree_extractor.get_computer_state(
+            application_name=application_name if application_name.strip() else None,
+            force_refresh=True,
         )
-        match = ui_grounder.ground(constraints, state)
+        target: Optional[UIElement] = None
+        match_confidence = GroundingConfidence.NONE
+        match_rationale = ""
 
-        if not match.is_reliable:
-            audit_log.log_event(
-                event_type="tool_failed",
-                tool=self.name,
-                action="click_element",
-                details={"reason": match.rationale, "confidence": match.confidence.value},
-                success=False,
-            )
-            return ExecutionResult(
-                success=False,
-                capability=self.name,
-                action="click_element",
-                error=match.rationale or f"Could not reliably locate element '{label}' to click.",
-                data={"confidence": match.confidence.value, "alternatives": match.alternative_labels},
-                evidence={"grounding_reliable": False, "rationale": match.rationale},
-            )
+        # Method A: Direct path lookup if target_path was provided
+        if target_path:
+            if state.root_element:
+                target = state.root_element.find_by_path(target_path)
+            if not target:
+                for el in state.interactive_elements:
+                    if el.path == target_path:
+                        target = el
+                        break
+            if target:
+                # Target validation hierarchy check
+                if role and role.strip() and target.role.lower() != role.strip().lower():
+                    audit_log.log_event(
+                        event_type="tool_failed",
+                        tool=self.name,
+                        action="click_element",
+                        details={"reason": f"STALE_TARGET: Role mismatch at '{target_path}'", "target_path": target_path},
+                        success=False,
+                    )
+                    return ExecutionResult(
+                        success=False,
+                        capability=self.name,
+                        action="click_element",
+                        error=f"STALE_TARGET: Element at '{target_path}' has role '{target.role}', expected '{role}'.",
+                        data={"target_path": target_path, "actual_role": target.role, "expected_role": role},
+                        evidence={"grounding_reliable": False, "stale": True},
+                    )
+                match_confidence = GroundingConfidence.EXACT
+                match_rationale = f"Direct path match at '{target_path}'"
+            else:
+                audit_log.log_event(
+                    event_type="tool_failed",
+                    tool=self.name,
+                    action="click_element",
+                    details={"reason": f"STALE_TARGET: Path '{target_path}' not found in fresh state", "target_path": target_path},
+                    success=False,
+                )
+                return ExecutionResult(
+                    success=False,
+                    capability=self.name,
+                    action="click_element",
+                    error=f"STALE_TARGET: Element at '{target_path}' no longer exists in current state.",
+                    data={"target_path": target_path},
+                    evidence={"grounding_reliable": False, "stale": True},
+                )
 
-        target = match.element
+        # Method B: Hierarchical semantic grounding
+        if not target:
+            constraints = TargetConstraints(
+                label=label if label.strip() else None,
+                role=role if role.strip() else None,
+                identifier=identifier if identifier.strip() else None,
+                scope_path=scope_path if scope_path.strip() else None,
+                child_label=child_label if child_label.strip() else None,
+            )
+            match = ui_grounder.ground(constraints, state)
+            match_confidence = match.confidence
+            match_rationale = match.rationale
+
+            if not match.is_reliable or not match.element:
+                audit_log.log_event(
+                    event_type="tool_failed",
+                    tool=self.name,
+                    action="click_element",
+                    details={"reason": match.rationale, "confidence": match.confidence.value, "is_ambiguous": match.is_ambiguous},
+                    success=False,
+                )
+                return ExecutionResult(
+                    success=False,
+                    capability=self.name,
+                    action="click_element",
+                    error=match.rationale or f"Could not reliably locate element '{label}' to click.",
+                    data={"confidence": match.confidence.value, "alternatives": match.alternative_labels, "is_ambiguous": match.is_ambiguous},
+                    evidence={"grounding_reliable": False, "rationale": match.rationale, "is_ambiguous": match.is_ambiguous},
+                )
+            target = match.element
+
         clean_target_text = escape_applescript_string(target.title or target.description or label)
         app_clause = f'process "{escape_applescript_string(state.active_application)}"'
 
-        # Method 1: Semantic Accessibility click via System Events
+        # Route 1: Native Accessibility action via System Events
         script = f"""
         tell application "System Events" to tell {app_clause}
             set targetWin to window 1
@@ -307,15 +381,17 @@ class AccessibilityCapability(Capability):
         click_success = res.success and ("clicked_" in res.stdout)
         click_method = res.stdout.strip() if click_success else "failed_applescript"
 
-        # Method 2: Coordinate click fallback if bounds are available
+        # Route 2: Dynamic Coordinate click from CURRENT observation bounds if accessibility click failed
         if not click_success and target.bounds and is_mouse_available():
             b = target.bounds
             cx = b.get("x", 0) + b.get("width", 0) / 2
             cy = b.get("y", 0) + b.get("height", 0) / 2
             if cx > 0 and cy > 0:
-                logger.info("Falling back to coordinate click at (%s, %s)", cx, cy)
+                logger.info("Accessibility click unconfirmed; executing dynamic coordinate click at (%s, %s) from current bounds", cx, cy)
                 click_success = click_screen_coordinates(cx, cy)
-                click_method = f"coordinate_click_({int(cx)},{int(cy)})"
+                click_method = f"dynamic_coordinate_click_({int(cx)},{int(cy)})"
+
+        tree_extractor.invalidate_cache()
 
         audit_log.log_event(
             event_type="tool_completed" if click_success else "tool_failed",
@@ -332,15 +408,17 @@ class AccessibilityCapability(Capability):
             data={
                 "target": target.to_summary_dict(),
                 "method": click_method,
-                "confidence": match.confidence.value,
+                "confidence": match_confidence.value if hasattr(match_confidence, "value") else str(match_confidence),
+                "target_path": target.path,
             },
             evidence={
                 "grounded_role": target.role,
                 "grounded_title": target.title or target.description,
                 "method": click_method,
+                "target_path": target.path,
                 "applescript_stdout": res.stdout,
             },
-            verification={"element_clicked": click_success},
+            verification={"element_clicked": click_success, "target_path": target.path},
             error=None if click_success else f"Failed to click element '{label}'. Applescript output: {res.stdout.strip()} {res.stderr.strip()}",
         )
 
@@ -348,77 +426,124 @@ class AccessibilityCapability(Capability):
         self,
         text: str,
         target_label: str = "",
+        target_path: str = "",
+        scope_path: str = "",
         clear_first: bool = False,
         press_return: bool = False,
         application_name: str = "",
     ) -> ExecutionResult:
-        """Focus an input field and type text into it."""
-        audit_log.log_event(
-            event_type="tool_requested",
-            tool=self.name,
-            action="type_into_element",
-            details={"text_length": len(text), "target_label": target_label, "clear_first": clear_first},
-        )
+        """Focus an input field and type text into it. Does NOT send/submit unless press_return=True."""
+        # Structural safety: type_text MUST NEVER implicitly send or submit
+        if press_return:
+            return ExecutionResult(
+                success=False,
+                capability=self.name,
+                action="type_into_element",
+                error="Implicit send/return rejected in type_into_element (Rule 12: Type != Send). Dispatch an explicit 'press_key' action with key='return' or explicit submit action.",
+                data={"press_return": True},
+                evidence={"structural_safety_violation": True},
+            )
 
-        # 1. If target label is specified, focus the input field first
-        if target_label.strip():
-            state = tree_extractor.get_computer_state(application_name=application_name if application_name.strip() else None)
+        state = tree_extractor.get_computer_state(
+            application_name=application_name if application_name.strip() else None,
+            force_refresh=True,
+        )
+        target: Optional[UIElement] = None
+
+        # 1. Locate target if path or label provided
+        if target_path:
+            if state.root_element:
+                target = state.root_element.find_by_path(target_path)
+            if not target:
+                for el in state.interactive_elements:
+                    if el.path == target_path:
+                        target = el
+                        break
+            if not target:
+                return ExecutionResult(
+                    success=False,
+                    capability=self.name,
+                    action="type_into_element",
+                    error=f"STALE_TARGET: Target text field at '{target_path}' no longer exists in current state.",
+                    data={"target_path": target_path},
+                    evidence={"grounding_reliable": False, "stale": True},
+                )
+        elif target_label.strip():
             constraints = TargetConstraints(
                 label=target_label.strip(),
                 role="text_field",
+                scope_path=scope_path if scope_path.strip() else None,
             )
             match = ui_grounder.ground(constraints, state)
             if match.is_reliable and match.element:
                 target = match.element
-                clean_target = escape_applescript_string(target.title or target.description or target_label)
-                app_clause = f'process "{escape_applescript_string(state.active_application)}"'
-                focus_script = f"""
-                tell application "System Events" to tell {app_clause}
-                    set targetWin to window 1
-                    try
-                        set focused of (first text field of targetWin whose title is "{clean_target}" or description is "{clean_target}") to true
-                        return "focused_text_field"
-                    end try
-                    try
-                        set focused of (first text area of targetWin whose title is "{clean_target}" or description is "{clean_target}") to true
-                        return "focused_text_area"
-                    end try
-                    try
-                        repeat with container in {{scroll area 1 of targetWin, group 1 of targetWin}}
-                            try
-                                set focused of (first text area of container) to true
-                                return "focused_container_text_area"
-                            end try
-                        end repeat
-                    end try
-                    return "focus_attempted"
-                end tell
-                """
-                run_applescript(focus_script, timeout=3)
-                time.sleep(0.1)
 
-        # 2. Clear existing text if requested (Cmd+A, Delete)
+        # 2. Focus the input field
+        if target:
+            clean_target = escape_applescript_string(target.title or target.description or target_label)
+            app_clause = f'process "{escape_applescript_string(state.active_application)}"'
+            focus_script = f"""
+            tell application "System Events" to tell {app_clause}
+                set targetWin to window 1
+                try
+                    set focused of (first text field of targetWin whose title is "{clean_target}" or description is "{clean_target}") to true
+                    return "focused_text_field"
+                end try
+                try
+                    set focused of (first text area of targetWin whose title is "{clean_target}" or description is "{clean_target}") to true
+                    return "focused_text_area"
+                end try
+                try
+                    repeat with container in {{scroll area 1 of targetWin, group 1 of targetWin}}
+                        try
+                            set focused of (first text area of container) to true
+                            return "focused_container_text_area"
+                        end try
+                    end repeat
+                end try
+                return "focus_attempted"
+            end tell
+            """
+            focus_res = run_applescript(focus_script, timeout=3)
+            # If accessibility focus was not confirmed and bounds exist, click into field to ensure focus
+            if "focused_" not in focus_res.stdout and target.bounds and is_mouse_available():
+                b = target.bounds
+                cx = b.get("x", 0) + b.get("width", 0) / 2
+                cy = b.get("y", 0) + b.get("height", 0) / 2
+                if cx > 0 and cy > 0:
+                    click_screen_coordinates(cx, cy)
+            time.sleep(0.1)
+
+        # 3. Clear existing text if requested (Cmd+A, Delete)
         if clear_first:
             self.send_keystroke(text="a", modifiers="command")
             time.sleep(0.05)
             self.send_keystroke(text="delete")
             time.sleep(0.05)
 
-        # 3. Type the text
+        # 4. Dispatch the text keystrokes
         type_res = self.send_keystroke(text=text)
         if not type_res.success:
             return type_res
 
-        # 4. Press return if requested
+        # 5. Press return ONLY if explicitly commanded (Rule 12: Type != Send)
         if press_return:
             time.sleep(0.05)
             self.send_keystroke(text="return")
+
+        tree_extractor.invalidate_cache()
+
+        resolved_path = target.path if target else target_path
 
         audit_log.log_event(
             event_type="tool_completed",
             tool=self.name,
             action="type_into_element",
-            details={"text_length": len(text), "target": target_label, "press_return": press_return},
+            details={
+                "text_length": len(text),
+                "target_path": resolved_path,
+                "press_return": press_return,
+            },
             success=True,
         )
 
@@ -429,11 +554,22 @@ class AccessibilityCapability(Capability):
             data={
                 "text_length": len(text),
                 "target_label": target_label,
+                "target_path": resolved_path,
                 "clear_first": clear_first,
                 "press_return": press_return,
             },
-            evidence={"keystrokes_dispatched": True, "chars_count": len(text)},
-            verification={"typed_successfully": True},
+            evidence={
+                "keystrokes_dispatched": True,
+                "chars_count": len(text),
+                "target_path": resolved_path,
+                "expected_text": text,
+            },
+            verification={
+                "typed_successfully": True,
+                "keystrokes_dispatched": True,
+                "target_path": resolved_path,
+                "expected_text": text,
+            },
         )
 
     def focus_element(
@@ -443,7 +579,10 @@ class AccessibilityCapability(Capability):
         application_name: str = "",
     ) -> ExecutionResult:
         """Focus a UI element in the active window."""
-        state = tree_extractor.get_computer_state(application_name=application_name if application_name.strip() else None)
+        state = tree_extractor.get_computer_state(
+            application_name=application_name if application_name.strip() else None,
+            force_refresh=True,
+        )
         constraints = TargetConstraints(label=label, role=role if role.strip() else None)
         match = ui_grounder.ground(constraints, state)
 
@@ -470,6 +609,7 @@ class AccessibilityCapability(Capability):
         """
         res = run_applescript(script, timeout=4)
         focused = "focused" in res.stdout
+        tree_extractor.invalidate_cache()
         return ExecutionResult(
             success=focused,
             capability=self.name,
@@ -513,6 +653,8 @@ class AccessibilityCapability(Capability):
         for _ in range(min(amount, 10)):
             self.send_keystroke(text=key)
             time.sleep(0.02)
+
+        tree_extractor.invalidate_cache()
 
         return ExecutionResult(
             success=True,
@@ -698,6 +840,7 @@ class AccessibilityCapability(Capability):
         """
 
         res = run_applescript(script, timeout=4)
+        tree_extractor.invalidate_cache()
         return ExecutionResult(
             success=res.success,
             capability=self.name,
@@ -717,6 +860,7 @@ class AccessibilityCapability(Capability):
         end tell
         """
         res = run_applescript(script, timeout=3)
+        tree_extractor.invalidate_cache()
         return ExecutionResult(
             success=res.success,
             capability=self.name,

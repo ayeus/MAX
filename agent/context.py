@@ -1,10 +1,10 @@
 """Context assembler for MAX agent planning with task-relevant minimization."""
 
-from pydantic import BaseModel, Field
 from typing import Any
-from .observer import observer, EnvironmentObservation
-from memory.preferences import preference_manager
+from pydantic import BaseModel, Field
 from memory.memories import memory_manager
+from memory.preferences import preference_manager
+from .observer import EnvironmentObservation, observer
 
 
 class AgentContext(BaseModel):
@@ -21,8 +21,13 @@ class AgentContext(BaseModel):
         }
         if self.observation.active_window:
             data["active_window"] = self.observation.active_window
-        if self.observation.ui_summary and self.observation.ui_summary.get("interactive_controls"):
-            data["interactive_controls"] = self.observation.ui_summary["interactive_controls"]
+        if self.observation.ui_summary:
+            if self.observation.ui_summary.get("focused_element"):
+                data["focused_element"] = self.observation.ui_summary["focused_element"]
+            if self.observation.ui_summary.get("interactive_controls"):
+                data["interactive_controls"] = self.observation.ui_summary["interactive_controls"]
+            if self.observation.ui_summary.get("visible_windows"):
+                data["visible_windows"] = self.observation.ui_summary["visible_windows"]
         if self.observation.recent_processes:
             data["running_processes_sample"] = self.observation.recent_processes[:10]
         if self.observation.clipboard_preview:

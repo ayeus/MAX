@@ -1,0 +1,61 @@
+{
+  "test": "autonomous_agentcore_live_replanning",
+  "type": "REAL MACOS",
+  "objective": "Write 'AgentCore_Replanned_1790167670' into TextEdit",
+  "token": "AgentCore_Replanned_1790167670",
+  "disturbance_induced": "Switched active application to Finder on live macOS desktop",
+  "disturbance_occurred": true,
+  "total_steps_executed_by_agentcore": 3,
+  "agentcore_replanned": true,
+  "grounding_methods": [
+    "ACCESSIBILITY",
+    "DIRECT",
+    "REGROUNDED_ACCESSIBILITY"
+  ],
+  "final_text_in_editor": "AgentCore_Replanned_1790167670",
+  "final_text_verified": true,
+  "overall_status": "EXECUTING",
+  "overall_success": true,
+  "goal_evaluation_status": "SATISFIED",
+  "goal_evaluation_explanation": "All subgoals satisfied.",
+  "total_cycle_latency_ms": 3901.86,
+  "steps_summary": [
+    {
+      "step": 1,
+      "action": "type_text",
+      "args": {
+        "text": "AgentCore_Replanned_1790167670",
+        "clear_first": true,
+        "press_return": false,
+        "application_name": "TextEdit"
+      },
+      "success": true,
+      "verification_status": "UNKNOWN",
+      "verification_explanation": "Target element AXGroup '' exists, but exposes no accessible text value."
+    },
+    {
+      "step": 2,
+      "action": "activate_application",
+      "args": {
+        "application_name": "TextEdit"
+      },
+      "success": true,
+      "verification_status": "SATISFIED",
+      "verification_explanation": "Verified application 'TextEdit' is running and active."
+    },
+    {
+      "step": 3,
+      "action": "type_text",
+      "args": {
+        "text": "AgentCore_Replanned_1790167670",
+        "clear_first": true,
+        "press_return": false,
+        "application_name": "TextEdit"
+      },
+      "success": true,
+      "verification_status": "SATISFIED",
+      "verification_explanation": "Verified text 'AgentCore_Replanned_1790167670' is contained in AXTextArea value ('AgentCore_Replanned_1790167670')."
+    }
+  ],
+  "passed": true
+}

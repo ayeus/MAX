@@ -1,23 +1,151 @@
-"""Accessibility tree extractor for macOS applications using System Events and Accessibility APIs."""
+"""Accessibility tree extractor for macOS applications using native ApplicationServices and fallback APIs."""
 
+from datetime import datetime, timezone
 import json
 import logging
+import time
 from typing import Any, Optional
-from macos.applescript import run_applescript, escape_applescript_string
-from capabilities.accessibility.models import UIElement, ComputerState
+
+from capabilities.accessibility.models import (
+    AccessibilityHealthStatus,
+    ComputerState,
+    ObservationMetadata,
+    UIElement,
+    WindowState,
+)
+from capabilities.accessibility.native_backend import (
+    extract_native_accessibility,
+    is_native_available,
+    parse_native_output_to_computer_state,
+)
+from macos.applescript import escape_applescript_string, run_applescript
 
 logger = logging.getLogger(__name__)
 
 
 class AccessibilityTreeExtractor:
-    """Extracts structured, bounded semantic UI element trees from macOS applications."""
+    """Extracts structured, bounded semantic UI element trees from macOS applications.
 
-    def __init__(self, max_depth: int = 4, max_elements: int = 40):
+    Production Authoritative Path:
+        macOS ApplicationServices via native Swift binary (bin/max-ax-dump)
+    Secondary Degraded Fallback:
+        macOS System Events via AppleScript (used only if native binary is unavailable)
+    """
+
+    def __init__(
+        self,
+        max_depth: int = 6,
+        max_elements: int = 100,
+        timeout_ms: float = 1500.0,
+        max_children: int = 50,
+        cache_ttl: float = 0.5,
+    ):
         self.max_depth = max_depth
         self.max_elements = max_elements
+        self.timeout_ms = timeout_ms
+        self.max_children = max_children
+        self.cache_ttl = cache_ttl
 
-    def get_computer_state(self, application_name: Optional[str] = None) -> ComputerState:
-        """Extract structured ComputerState for the specified or frontmost application."""
+        self._cached_state: Optional[ComputerState] = None
+        self._cached_target_app: Optional[str] = None
+        self._cache_time: float = 0.0
+
+    def invalidate_cache(self) -> None:
+        """Explicitly invalidate cached computer state (e.g. after mouse click or keystroke)."""
+        self._cached_state = None
+        self._cached_target_app = None
+        self._cache_time = 0.0
+
+    def _get_frontmost_app_info(self) -> tuple[str, Optional[int]]:
+        """Fast query of current frontmost application name and PID to prevent cross-app cache contamination."""
+        try:
+            from macos.shell import run_shell_command
+            res = run_shell_command("/usr/bin/lsappinfo info -only name,pid $(/usr/bin/lsappinfo front)", timeout=1)
+            if res.success and res.stdout.strip():
+                name = ""
+                pid = None
+                for line in res.stdout.strip().splitlines():
+                    if "=" in line:
+                        k, v = line.split("=", 1)
+                        k = k.strip().strip('"').lower()
+                        v = v.strip().strip('"')
+                        if "name" in k:
+                            name = v.lower()
+                        elif "pid" in k:
+                            try:
+                                pid = int(v)
+                            except ValueError:
+                                pass
+                return name, pid
+        except Exception:
+            pass
+        return "", None
+
+    def get_computer_state(
+        self,
+        application_name: Optional[str] = None,
+        force_refresh: bool = False,
+    ) -> ComputerState:
+        """Extract structured ComputerState for the specified or frontmost application.
+
+        Uses the high-speed native ApplicationServices backend as the authoritative source.
+        """
+        now = time.time()
+        if application_name and application_name.strip():
+            cache_key = f"explicit:{application_name.strip().lower()}"
+        else:
+            front_name, front_pid = self._get_frontmost_app_info()
+            cache_key = f"front:{front_name}:{front_pid}" if front_name else "front:default"
+
+        # Check short-lived cache
+        if (
+            not force_refresh
+            and self._cached_state is not None
+            and (now - self._cache_time) < self.cache_ttl
+            and self._cached_target_app == cache_key
+        ):
+            return self._cached_state
+
+        state: Optional[ComputerState] = None
+
+        # 1. Primary Authoritative Path: Native Swift ApplicationServices
+        if is_native_available():
+            try:
+                native_data = extract_native_accessibility(
+                    app_name=application_name,
+                    max_depth=self.max_depth,
+                    max_elements=self.max_elements,
+                    timeout_ms=self.timeout_ms,
+                    max_children=self.max_children,
+                )
+                status_str = native_data.get("status", "")
+                if status_str in (
+                    AccessibilityHealthStatus.ACCESSIBILITY_AVAILABLE.value,
+                    AccessibilityHealthStatus.ACCESSIBILITY_DENIED.value,
+                    AccessibilityHealthStatus.PARTIAL.value,
+                ):
+                    state = parse_native_output_to_computer_state(native_data)
+                elif status_str == AccessibilityHealthStatus.ACCESSIBILITY_UNAVAILABLE.value and "permission" in str(native_data.get("error", "")).lower():
+                    state = parse_native_output_to_computer_state(native_data)
+            except Exception as e:
+                logger.error("Error invoking native accessibility backend: %s", e)
+                state = None
+
+        # 2. Secondary Fallback Path: System Events AppleScript
+        if state is None:
+            logger.info("Falling back to secondary AppleScript accessibility extraction...")
+            state = self._extract_applescript_fallback(application_name)
+
+        # Cache result
+        self._cached_state = state
+        self._cached_target_app = cache_key
+        self._cache_time = now
+
+        return state
+
+    def _extract_applescript_fallback(self, application_name: Optional[str] = None) -> ComputerState:
+        """Secondary fallback using System Events AppleScript."""
+        start_time = time.time()
         app_clause = ""
         if application_name and application_name.strip():
             clean_app = escape_applescript_string(application_name.strip())
@@ -54,10 +182,7 @@ class AccessibilityTreeExtractor:
 
                 set elemList to {{}}
                 if hasWin then
-                    -- Extract direct controls and 1-level container children
                     set targetRoles to {{"AXButton", "AXTextField", "AXTextArea", "AXSearchField", "AXPopUpButton", "AXCheckBox", "AXRadioButton", "AXTabGroup", "AXStaticText", "AXLink"}}
-                    
-                    -- Query top-level elements
                     try
                         set topElems to every UI element of targetWin
                         repeat with el in topElems
@@ -86,41 +211,6 @@ class AccessibilityTreeExtractor:
                                     if (n is not "") or (v is not "") or (d is not "") or (r is "AXTextField") or (r is "AXTextArea") then
                                         set end of elemList to (r & "|||" & n & "|||" & v & "|||" & d & "|||" & (f as string))
                                     end if
-                                else if r is in {{"AXGroup", "AXScrollArea", "AXSplitGroup", "AXToolbar"}} then
-                                    -- Check 1 level down
-                                    try
-                                        set subElems to every UI element of el
-                                        repeat with subEl in subElems
-                                            try
-                                                set subR to role of subEl
-                                                if subR is in targetRoles then
-                                                    set subN to ""
-                                                    set subV to ""
-                                                    set subD to ""
-                                                    set subF to false
-                                                    try
-                                                        set subN to name of subEl
-                                                    end try
-                                                    try
-                                                        set subV to (value of subEl) as string
-                                                    end try
-                                                    try
-                                                        set subD to description of subEl
-                                                    end try
-                                                    try
-                                                        set subF to (focused of subEl)
-                                                    end try
-                                                    if (subN is "missing value") then set subN to ""
-                                                    if (subV is "missing value") then set subV to ""
-                                                    if (subD is "missing value") then set subD to ""
-                                                    if (subN is not "") or (subV is not "") or (subD is not "") or (subR is "AXTextField") or (subR is "AXTextArea") then
-                                                        set end of elemList to (subR & "|||" & subN & "|||" & subV & "|||" & subD & "|||" & (subF as string))
-                                                    end if
-                                                end if
-                                                if (count of elemList) >= {self.max_elements} then exit repeat
-                                            end try
-                                        end repeat
-                                    end try
                                 end if
                                 if (count of elemList) >= {self.max_elements} then exit repeat
                             end try
@@ -139,14 +229,23 @@ class AccessibilityTreeExtractor:
         end tell
         """
 
-        res = run_applescript(script, timeout=4)
+        res = run_applescript(script, timeout=int(self.timeout_ms / 1000.0) + 2)
+        latency_ms = (time.time() - start_time) * 1000.0
+
         if not res.success or not res.stdout.strip() or res.stdout.strip().startswith("ERROR###"):
-            # Fallback observation
+            err_msg = res.stdout.strip() if res.stdout.strip().startswith("ERROR###") else res.stderr
+            status = AccessibilityHealthStatus.ACCESSIBILITY_DENIED if ("not allowed" in str(err_msg).lower() or "assistive" in str(err_msg).lower()) else AccessibilityHealthStatus.PARTIAL
             app_name = application_name or "Unknown"
             return ComputerState(
                 active_application=app_name,
                 active_window_title="",
                 interactive_elements=[],
+                observation_metadata=ObservationMetadata(
+                    latency_ms=latency_ms,
+                    accessibility_status=status,
+                    backend="applescript_fallback",
+                    error=err_msg or "AppleScript accessibility query failed",
+                ),
             )
 
         parts = res.stdout.strip().split("###")
@@ -169,7 +268,7 @@ class AccessibilityTreeExtractor:
         focused_el: Optional[UIElement] = None
 
         if elems_block:
-            for item in elems_block.split("%%%"):
+            for idx, item in enumerate(elems_block.split("%%%")):
                 if not item.strip():
                     continue
                 fields = item.split("|||")
@@ -186,18 +285,35 @@ class AccessibilityTreeExtractor:
                         value=value,
                         description=desc,
                         is_focused=is_focused,
-                        actions=["AXPress"] if "Button" in role else ["AXConfirm"],
+                        actions=["AXPress"] if "Button" in role else [],
+                        path=f"AXWindow[0]/{role}[{idx}]",
                     )
                     elements.append(el)
                     if is_focused and not focused_el:
                         focused_el = el
 
+        win_state = WindowState(
+            title=win_title,
+            role="AXWindow",
+            is_focused=True,
+            bounds=bounds,
+        )
+
         return ComputerState(
             active_application=proc_name,
             active_window_title=win_title,
             active_window_bounds=bounds,
+            active_window=win_state,
+            windows=[win_state] if win_title or bounds else [],
+            visible_windows=[win_title] if win_title else [],
             focused_element=focused_el,
             interactive_elements=elements,
+            observation_metadata=ObservationMetadata(
+                latency_ms=latency_ms,
+                accessibility_status=AccessibilityHealthStatus.PARTIAL,
+                backend="applescript_fallback",
+                traversal_stats={"interactive_nodes_count": len(elements)},
+            ),
         )
 
 

@@ -1,0 +1,59 @@
+{
+  "multi_window_test": {
+    "test": "real_live_multi_window_isolation",
+    "type": "REAL MACOS",
+    "application": "TextEdit",
+    "pid": 9921,
+    "detected_window_count": 2,
+    "window_titles": [
+      "MAX_Doc_Beta",
+      "MAX_Doc_Alpha"
+    ],
+    "focused_window_title": "MAX_Doc_Beta",
+    "child_window_nodes": 2,
+    "subtree_path_isolation_verified": true,
+    "latency_ms": 1164.44,
+    "passed": true
+  },
+  "live_replanning_test": {
+    "test": "real_live_replanning_cycle",
+    "type": "REAL MACOS",
+    "diagnosis_type": "APP_SWITCHED",
+    "recovery_subgoal": "Re-activate application 'TextEdit'",
+    "recovery_action_executed": true,
+    "resumed_action_success": true,
+    "postcondition_status": "SATISFIED",
+    "verified_actual_value": "MAX Self Healing Passed 1790165187",
+    "total_replanning_cycle_ms": 3454.11,
+    "detailed_timings_ms": {
+      "setup_ms": 1033.06,
+      "initial_observation_ms": 85.8,
+      "divergence_observation_ms": 180.39,
+      "diagnosis_ms": 0.01,
+      "recovery_synthesis_ms": 0.04,
+      "recovery_execution_ms": 143.3,
+      "resumed_action_ms": 1137.4,
+      "post_recovery_observation_ms": 410.0,
+      "verification_ms": 0.03
+    },
+    "passed": true
+  },
+  "end_to_end_performance": {
+    "benchmark": "real_live_macos_e2e_components",
+    "metrics_ms": {
+      "observation_ipc_ms": 108.25,
+      "semantic_grounding_ms": 0.117,
+      "target_validation_ms": 0.0188,
+      "applescript_action_dispatch_ms": 518.58,
+      "post_observation_ipc_ms": 301.03,
+      "postcondition_verification_ms": 0.0284,
+      "total_measured_e2e_ms": 928.02
+    },
+    "target_validity_result": "(<TargetValidity.VALID: 'VALID'>, UIElement(role='AXTextArea', subrole=None, title='', value=None, description=None, identifier='First Text View', bounds={'x': 221.0, 'y': 171.0, 'width': 586.0, 'height': 382.0}, is_focused=True, is_enabled=None, is_selected=None, actions=['AXShowMenu'], path='AXApplication/AXWindow[0]/AXScrollArea[0]/AXTextArea[0]', parent_path='AXApplication/AXWindow[0]/AXScrollArea[0]', children=[]), 'Verified uniquely via semantic path and attributes.')",
+    "postcondition_result": "SATISFIED",
+    "analysis": {
+      "ipc_percentage": 100.0,
+      "internal_logic_percentage": 0.02
+    }
+  }
+}

@@ -1,0 +1,287 @@
+{
+  "test_a": {
+    "task": "Open TextEdit and type: MAX computer use verification",
+    "launch_success": true,
+    "target_grounded": true,
+    "target_path": "AXApplication/AXWindow[0]/AXScrollArea[0]/AXTextArea[0]",
+    "target_bounds": {
+      "x": 146.0,
+      "y": 171.0,
+      "width": 586.0,
+      "height": 382.0
+    },
+    "typed_phrase": "MAX computer use verification 1790164327",
+    "actual_value_read": "MAX computer use verification 1790164327",
+    "verification_status": "SATISFIED",
+    "verification_explanation": "Verified text 'MAX computer use verification 1790164327' is contained in AXTextArea value ('MAX computer use verification 1790164327').",
+    "latency_ms": 5528.27,
+    "passed": true
+  },
+  "test_b": {
+    "task": "Execute multi-action GUI workflow (launch -> focus -> type -> append -> verify)",
+    "total_actions": 4,
+    "action_records": [
+      {
+        "action_index": 1,
+        "action": "launch_application",
+        "target": "TextEdit",
+        "pre_state": {
+          "active_app": "Antigravity IDE",
+          "window": "MAX \u2014 file:///Users/aayushnmadeo/Documents/MAX/tests/live_chunk2_verification.py (Agent) (live_chunk2_verification.py)"
+        },
+        "grounding_evidence": "Application bundle resolution in /Applications",
+        "post_state": {
+          "active_app": "TextEdit",
+          "window": "Untitled 5"
+        },
+        "postcondition": "APPLICATION_RUNNING(TextEdit)",
+        "result": "SATISFIED",
+        "latency_ms": 2984.36
+      },
+      {
+        "action_index": 2,
+        "action": "focus_element",
+        "target": "AXApplication/AXWindow[0]/AXScrollArea[0]/AXTextArea[0]",
+        "pre_state": {
+          "focused": "AXApplication/AXWindow[0]/AXScrollArea[0]/AXTextArea[0]"
+        },
+        "grounding_evidence": "Resolved target 'AXTextArea' (AXTextArea) via role match (AXTextArea), currently focused input",
+        "post_state": {
+          "focused": "AXApplication/AXWindow[0]/AXScrollArea[0]/AXTextArea[0]"
+        },
+        "postcondition": "ELEMENT_FOCUSED",
+        "result": "SATISFIED",
+        "latency_ms": 650.68
+      },
+      {
+        "action_index": 3,
+        "action": "type_into_element",
+        "target": "AXApplication/AXWindow[0]/AXScrollArea[0]/AXTextArea[0]",
+        "pre_state": {
+          "text_length": 0
+        },
+        "grounding_evidence": "TargetReference bound to AXApplication/AXWindow[0]/AXScrollArea[0]/AXTextArea[0]",
+        "post_state": {
+          "text_contains_part1": true
+        },
+        "postcondition": "TEXT_VALUE_CONTAINS('MAX MultiAction 1790164332')",
+        "result": "SATISFIED",
+        "latency_ms": 1381.87
+      },
+      {
+        "action_index": 4,
+        "action": "type_into_element",
+        "target": "AXApplication/AXWindow[0]/AXScrollArea[0]/AXTextArea[0]",
+        "pre_state": {
+          "initial_text": "MAX MultiAction 1790164332"
+        },
+        "grounding_evidence": "Appended text to grounded editor",
+        "post_state": {
+          "final_value": "MAX MultiAction 1790164332 - Completed Successfully"
+        },
+        "postcondition": "TEXT_VALUE_CONTAINS('MAX MultiAction 1790164332 - Completed Successfully')",
+        "result": "SATISFIED",
+        "latency_ms": 1053.45
+      }
+    ],
+    "all_subgoals_satisfied": true,
+    "latency_ms": 6206.22,
+    "passed": true
+  },
+  "test_c": {
+    "task": "Compose message: 'I will be late by 10 minutes' without sending",
+    "grounded_target": "AXApplication/AXWindow[0]/AXScrollArea[0]/AXTextArea[0]",
+    "typed_text": "I will be late by 10 minutes.",
+    "actual_value_in_composer": "I will be late by 10 minutes.",
+    "press_return_param": false,
+    "newline_present": false,
+    "type_not_send_verified": true,
+    "latency_ms": 2116.82,
+    "passed": true
+  },
+  "test_d": {
+    "task": "Open https://example.com in browser and verify active tab",
+    "open_success": true,
+    "tab_queried": true,
+    "active_tab_url": "https://example.com/",
+    "active_tab_title": "Example Domain",
+    "latency_ms": 1539.76,
+    "passed": true
+  },
+  "test_e": {
+    "task": "Unexpected modal appears -> detect -> ground modal control -> recover -> verify closed -> resume original task",
+    "diagnosis_type": "MODAL_INTERRUPTION",
+    "modal_detected": true,
+    "modal_title": "Security Confirmation",
+    "modal_control_grounded": true,
+    "modal_disappeared_verified": true,
+    "original_task_resumed_and_verified": true,
+    "latency_ms": 0.77,
+    "passed": true
+  },
+  "test_f": {
+    "task": "Encounter ambiguous targets (two identical 'Save' buttons) and refuse blind action",
+    "is_ambiguous": true,
+    "is_reliable": false,
+    "element": null,
+    "rationale": "Ambiguous target: multiple candidates match with near-identical score (Candidate 1: AXButton 'Save' at AXWindow[0]/AXGroup[0]/AXButton[0] vs Candidate 2: AXButton 'Save' at AXWindow[0]/AXGroup[1]/AXButton[0]). Refusing blind action.",
+    "latency_ms": 0.05,
+    "passed": true
+  },
+  "test_g": {
+    "task": "Evaluate unsupported action with no post-action state verification",
+    "tool_success": true,
+    "evaluator_status": "UNKNOWN",
+    "explanation": "Accessibility action 'unsupported_custom_action' executed, but no explicit post-action GUI state verification is implemented.",
+    "latency_ms": 0.09,
+    "passed": true
+  },
+  "gui_generalization": [
+    {
+      "class": "gui_text_entry",
+      "description": "Real GUI text entry in active window",
+      "status": "DONE",
+      "overall_success": true,
+      "verification_status": "SATISFIED",
+      "latency_ms": 5183.46,
+      "passed": true
+    },
+    {
+      "class": "gui_button_interaction",
+      "description": "Dynamic UI button discovery and state transition",
+      "status": "DONE",
+      "overall_success": true,
+      "verification_status": "UNKNOWN",
+      "latency_ms": 152.04,
+      "passed": true
+    },
+    {
+      "class": "gui_search_navigation",
+      "description": "Dynamic search input & state verification",
+      "status": "DONE",
+      "overall_success": true,
+      "verification_status": "SATISFIED",
+      "latency_ms": 1520.24,
+      "passed": true
+    },
+    {
+      "class": "gui_selection",
+      "description": "UI element selection state verification",
+      "status": "DONE",
+      "overall_success": true,
+      "verification_status": "SATISFIED",
+      "latency_ms": 0.09,
+      "passed": true
+    },
+    {
+      "class": "gui_scrolling",
+      "description": "GUI scroll event dispatch with content visibility verification",
+      "status": "DONE",
+      "overall_success": true,
+      "verification_status": "SATISFIED",
+      "latency_ms": 0.07,
+      "passed": true
+    },
+    {
+      "class": "gui_multi_step_task",
+      "description": "Multi-step GUI interaction (launch -> focus -> type -> append)",
+      "status": "DONE",
+      "overall_success": true,
+      "verification_status": "SATISFIED",
+      "latency_ms": 6402.91,
+      "passed": true
+    },
+    {
+      "class": "gui_modal_recovery",
+      "description": "Detect and recover from unexpected modal dialog",
+      "status": "DONE",
+      "overall_success": true,
+      "verification_status": "SATISFIED",
+      "latency_ms": 0.37,
+      "passed": true
+    },
+    {
+      "class": "gui_ambiguity_rejection",
+      "description": "Strict rejection of ambiguous UI targets",
+      "status": "DONE",
+      "overall_success": true,
+      "verification_status": "REJECTED_AMBIGUOUS",
+      "latency_ms": 0.04,
+      "passed": true
+    },
+    {
+      "class": "gui_multi_window_interaction",
+      "description": "Multi-window inspection and window focus isolation",
+      "status": "DONE",
+      "overall_success": true,
+      "verification_status": "SATISFIED",
+      "latency_ms": 164.34,
+      "passed": true
+    },
+    {
+      "class": "gui_cancellation",
+      "description": "Immediate GUI action queue invalidation upon cancellation",
+      "status": "CANCELLED",
+      "overall_success": false,
+      "verification_status": "UNKNOWN",
+      "latency_ms": 2704.86,
+      "passed": true
+    }
+  ],
+  "performance_breakdown": {
+    "metrics_ms": {
+      "observation_ms": 120.1,
+      "grounding_ms": 0.17,
+      "target_validation_ms": 0.06,
+      "action_ms": 118.72,
+      "post_observation_ms": 82.4,
+      "verification_ms": 0.07,
+      "replanning_ms": 0.0,
+      "final_response_ms": 0.02,
+      "total_deterministic_loop_ms": 321.54
+    },
+    "ranked_contributors": [
+      {
+        "component": "observation_ms",
+        "latency_ms": 120.1,
+        "percentage": 37.4
+      },
+      {
+        "component": "action_ms",
+        "latency_ms": 118.72,
+        "percentage": 36.9
+      },
+      {
+        "component": "post_observation_ms",
+        "latency_ms": 82.4,
+        "percentage": 25.6
+      },
+      {
+        "component": "grounding_ms",
+        "latency_ms": 0.17,
+        "percentage": 0.1
+      },
+      {
+        "component": "verification_ms",
+        "latency_ms": 0.07,
+        "percentage": 0.0
+      },
+      {
+        "component": "target_validation_ms",
+        "latency_ms": 0.06,
+        "percentage": 0.0
+      },
+      {
+        "component": "final_response_ms",
+        "latency_ms": 0.02,
+        "percentage": 0.0
+      },
+      {
+        "component": "replanning_ms",
+        "latency_ms": 0.0,
+        "percentage": 0.0
+      }
+    ],
+    "bottleneck_analysis": "Observation (120.1 ms) and Action dispatch (118.72 ms) are the dominant contributors. Grounding, target validation, verification, and replanning execute in sub-millisecond time (< 0.17 ms)."
+  }
+}

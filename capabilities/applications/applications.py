@@ -14,6 +14,14 @@ from security.confirmation import request_user_confirmation
 from security.audit import audit_log
 
 
+def _invalidate_accessibility_cache() -> None:
+    try:
+        from capabilities.accessibility.tree import tree_extractor
+        tree_extractor.invalidate_cache()
+    except Exception:
+        pass
+
+
 class ApplicationsCapability(Capability):
     name = "applications"
     description = (
@@ -211,7 +219,7 @@ class ApplicationsCapability(Capability):
         )
 
         launch_ok = (res.exit_code == 0)
-        return ExecutionResult(
+        final_res = ExecutionResult(
             success=is_running,
             capability=self.name,
             action="launch_application",
@@ -238,12 +246,15 @@ class ApplicationsCapability(Capability):
                 None if is_running else f"Application '{app_clean}' launch command executed, but process was not verified in running process list."
             ),
         )
+        _invalidate_accessibility_cache()
+        return final_res
 
     def activate_application(self, application_name: str) -> ExecutionResult:
         app_clean = application_name.strip()
         escaped = escape_applescript_string(app_clean)
         script = f'tell application "{escaped}" to activate'
         res = run_applescript(script)
+        _invalidate_accessibility_cache()
         return ExecutionResult(
             success=res.success,
             capability=self.name,
@@ -279,6 +290,7 @@ class ApplicationsCapability(Capability):
         running_names = self._get_running_process_names()
         still_running = any(app_clean.lower() in p.lower() for p in running_names)
 
+        _invalidate_accessibility_cache()
         return ExecutionResult(
             success=not still_running,
             capability=self.name,

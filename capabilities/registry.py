@@ -26,6 +26,33 @@ class CapabilityRegistry:
         """Return schema definitions for all registered capabilities."""
         return [cap.get_schema() for cap in self._capabilities.values()]
 
+    def is_operation_supported(self, capability_name: str, action: str) -> bool:
+        """Check if an operation actually exists in the registry (with resilient routing)."""
+        cap = self.get(capability_name)
+        if cap and cap.has_operation(action):
+            return True
+        for other_cap in self._capabilities.values():
+            if other_cap.has_operation(action):
+                return True
+        return False
+
+    def get_structured_catalog(self) -> list[dict[str, Any]]:
+        """Return structured capability descriptions for planner gating and documentation."""
+        catalog = []
+        for cap_name, cap in self._capabilities.items():
+            for op in cap.get_operations():
+                catalog.append({
+                    "capability": cap_name,
+                    "operation": op.name,
+                    "description": op.description,
+                    "parameters": op.parameters,
+                    "platform": getattr(op, "platform", getattr(cap, "platform", "macos")),
+                    "risk_level": op.default_risk.value,
+                    "verification_support": getattr(op, "verification_support", "deterministic"),
+                })
+        return catalog
+
+
     def execute(self, capability_name: str, action: str, args: dict[str, Any]) -> ExecutionResult:
         """Execute an action on a named capability with resilient routing."""
         cap = self.get(capability_name)

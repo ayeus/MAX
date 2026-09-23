@@ -560,11 +560,102 @@ class GoalEvaluator:
                     explanation=f"macOS system inspection '{action}' successfully retrieved data.",
                     evidence=result.evidence,
                 )
+
+            elif action == "get_brightness":
+                if result.success and "level" in result.data:
+                    lvl = result.data.get("level", 0.0)
+                    return VerificationResult(
+                        status=GoalStatus.SATISFIED,
+                        explanation=f"Display brightness verified at {lvl:.2f}.",
+                        evidence=result.evidence,
+                    )
+                return VerificationResult(
+                    status=GoalStatus.UNKNOWN if not result.data.get("supported", True) else GoalStatus.UNSATISFIED,
+                    explanation=result.error or "Failed to query display brightness.",
+                    evidence=result.evidence,
+                )
+
+            elif action in ("set_brightness", "increase_brightness", "decrease_brightness"):
+                from macos.brightness import get_display_brightness, is_brightness_supported
+                if not is_brightness_supported():
+                    return VerificationResult(
+                        status=GoalStatus.UNKNOWN,
+                        explanation="Display brightness hardware observation is unsupported on this system.",
+                        evidence=result.evidence,
+                    )
+
+                obs_ok, current_hardware_brightness, obs_err = get_display_brightness()
+                if not obs_ok:
+                    return VerificationResult(
+                        status=GoalStatus.UNKNOWN,
+                        explanation=f"Cannot observe display brightness state: {obs_err}",
+                        evidence=result.evidence,
+                    )
+
+                before = result.evidence.get("before")
+                after = current_hardware_brightness
+
+                if action == "set_brightness":
+                    target = step.args.get("level", result.evidence.get("target"))
+                    if target is not None:
+                        try:
+                            target_f = float(target)
+                        except (ValueError, TypeError):
+                            target_f = 0.5
+                        if abs(after - target_f) < 0.05 or (target_f >= 1.0 and after >= 0.95) or (target_f <= 0.0 and after <= 0.05):
+                            return VerificationResult(
+                                status=GoalStatus.SATISFIED,
+                                explanation=f"Display brightness set to {after:.2f} (target {target_f:.2f}).",
+                                evidence={"target": target_f, "observed": after, "before": before},
+                            )
+                        return VerificationResult(
+                            status=GoalStatus.UNSATISFIED,
+                            explanation=f"Display brightness was not achieved: expected {target_f:.2f}, observed {after:.2f}.",
+                            evidence={"target": target_f, "observed": after, "before": before},
+                        )
+
+                elif action == "increase_brightness":
+                    if before is not None:
+                        try:
+                            before_f = float(before)
+                        except (ValueError, TypeError):
+                            before_f = 0.0
+                        if (after > before_f + 0.005) or (before_f >= 0.99 and after >= 0.99):
+                            return VerificationResult(
+                                status=GoalStatus.SATISFIED,
+                                explanation=f"Display brightness increased from {before_f:.2f} to {after:.2f}.",
+                                evidence={"before": before_f, "after": after, "delta": after - before_f},
+                            )
+                        return VerificationResult(
+                            status=GoalStatus.UNSATISFIED,
+                            explanation=f"Display brightness did not increase: before {before_f:.2f}, after {after:.2f}.",
+                            evidence={"before": before_f, "after": after},
+                        )
+
+                elif action == "decrease_brightness":
+                    if before is not None:
+                        try:
+                            before_f = float(before)
+                        except (ValueError, TypeError):
+                            before_f = 1.0
+                        if (after < before_f - 0.005) or (before_f <= 0.01 and after <= 0.01):
+                            return VerificationResult(
+                                status=GoalStatus.SATISFIED,
+                                explanation=f"Display brightness decreased from {before_f:.2f} to {after:.2f}.",
+                                evidence={"before": before_f, "after": after, "delta": before_f - after},
+                            )
+                        return VerificationResult(
+                            status=GoalStatus.UNSATISFIED,
+                            explanation=f"Display brightness did not decrease: before {before_f:.2f}, after {after:.2f}.",
+                            evidence={"before": before_f, "after": after},
+                        )
+
             return VerificationResult(
                 status=GoalStatus.UNKNOWN,
                 explanation=f"macOS action '{action}' executed, but no explicit post-action state verification is implemented.",
                 evidence=result.evidence,
             )
+
 
         # Default fallback for unverified capabilities: NEVER assume SATISFIED from tool success alone
         return VerificationResult(

@@ -50,9 +50,12 @@ def build_planning_prompt(
         "- Multi-step computer tasks (e.g. 'Open app and type X'): Formulate the steps sequentially (e.g. launch_application -> type_into_element).",
         "- When searching the web or opening a URL in browser, use capability: 'browser', action: 'search_web' (args: {'query': '...'}) or action: 'open_url' (args: {'url': '...'}),",
         "- When visually inspecting what is on screen or locating controls without accessibility labels, use capability: 'vision', action: 'describe_screen', 'ask_screen', or 'visual_click',",
-        "- When inspecting the filesystem, use capability: 'filesystem', action: 'find_files' or 'list_directory' or 'read_file'",
+        "- When adjusting display brightness, use capability: 'macos', action: 'increase_brightness' (args: {'delta': 0.1}), action: 'decrease_brightness' (args: {'delta': 0.1}), or action: 'set_brightness' (args: {'level': <0.0 to 1.0>}).",
+        "- When inspecting display brightness, use capability: 'macos', action: 'get_brightness', args: {}.",
+        "- HARD CAPABILITY GATE: If the user request asks to change hardware or system configurations without a corresponding operation declared in the schemas (e.g. monitor refresh rate, display resolution, bluetooth pairing, overclocking), return an empty plan: [] and state in 'thought' that this capability is not supported.",
         "- Use ONLY the operations declared in the capability schemas above.",
         "Output ONLY the JSON object with 'thought' and 'plan' fields as specified in your system prompt.",
     ])
 
     return "\n".join(prompt_parts)
+

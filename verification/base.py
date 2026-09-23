@@ -9,6 +9,7 @@ class GoalStatus(str, Enum):
     SATISFIED = "SATISFIED"
     UNSATISFIED = "UNSATISFIED"
     UNKNOWN = "UNKNOWN"
+    UNSUPPORTED = "UNSUPPORTED"
 
 
 class AgentState(str, Enum):
@@ -23,6 +24,8 @@ class AgentState(str, Enum):
     FAILED = "FAILED"
     RECOVERING = "RECOVERING"
     DONE = "DONE"
+    UNSUPPORTED = "UNSUPPORTED"
+
 
 
 class VerificationResult(BaseModel):

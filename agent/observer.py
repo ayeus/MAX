@@ -15,6 +15,15 @@ from macos.applescript import run_applescript
 from macos.shell import run_shell_command
 
 
+from enum import Enum
+
+
+class ObservationTier(str, Enum):
+    FAST = "FAST"
+    STANDARD = "STANDARD"
+    DEEP = "DEEP"
+
+
 class EnvironmentObservation(BaseModel):
     current_directory: str
     active_application: str
@@ -24,6 +33,8 @@ class EnvironmentObservation(BaseModel):
     ui_summary: Optional[dict[str, Any]] = None
     interactive_elements_count: int = 0
     computer_state: Optional[ComputerState] = None
+    display_brightness: Optional[float] = None
+    tier: ObservationTier = ObservationTier.STANDARD
 
 
 # Alias for backward and forward compatibility
@@ -31,7 +42,7 @@ AgentObservation = EnvironmentObservation
 
 
 class Observer:
-    """Inspects the computer state before and after actions."""
+    """Inspects the computer state before and after actions across FAST, STANDARD, and DEEP tiers."""
 
     def __init__(self):
         self.last_computer_state: Optional[ComputerState] = None
@@ -79,20 +90,67 @@ class Observer:
             return txt[:max_chars] + ("..." if len(txt) > max_chars else "")
         return None
 
-    def observe(self, fast: bool = False, include_ui: bool = True, force_refresh: bool = False) -> EnvironmentObservation:
-        """Perform observation of current computer state.
+    def get_display_brightness_safe(self) -> Optional[float]:
+        """Quickly query display brightness without raising errors."""
+        try:
+            from macos.brightness import get_display_brightness
+            ok, val, _ = get_display_brightness()
+            return val if ok else None
+        except Exception:
+            return None
 
-        If include_ui=True, captures active window and interactive controls.
-        If fast=True, avoids expensive full process tree queries.
-        If force_refresh=True, bypasses short-lived cache for an immediate fresh snapshot.
+    def observe(
+        self,
+        tier: ObservationTier = ObservationTier.STANDARD,
+        fast: Optional[bool] = None,
+        include_ui: Optional[bool] = None,
+        force_refresh: bool = False,
+    ) -> EnvironmentObservation:
+        """Perform tiered observation of current computer state.
+
+        Tiers:
+        - FAST: minimal context (active application, directory, brightness) for trivial actions (<30ms).
+        - STANDARD: active application, active window, and visible interactive controls (~100ms).
+        - DEEP: full recursive accessibility tree, complete process list, and clipboard preview (~300ms).
+
+        Maintains backward compatibility with boolean `fast` and `include_ui` arguments.
         """
+        # Resolve legacy flags into explicit tiers
+        if fast is True and (include_ui is False or include_ui is None):
+            active_tier = ObservationTier.FAST
+        elif fast is False and include_ui is True and force_refresh:
+            active_tier = ObservationTier.DEEP
+        elif fast is False and include_ui is False:
+            active_tier = ObservationTier.STANDARD
+        else:
+            active_tier = tier
+
         active_app = self.get_active_application()
         active_win = ""
         ui_sum = None
         count = 0
         state = None
+        processes = []
+        clip = None
+        brightness = self.get_display_brightness_safe()
 
-        if include_ui:
+        if active_tier == ObservationTier.FAST:
+            # Minimal observation for simple/system commands
+            return EnvironmentObservation(
+                current_directory=self.get_current_directory(),
+                active_application=active_app,
+                active_window="",
+                recent_processes=[],
+                clipboard_preview=None,
+                ui_summary=None,
+                interactive_elements_count=0,
+                computer_state=None,
+                display_brightness=brightness,
+                tier=ObservationTier.FAST,
+            )
+
+        elif active_tier == ObservationTier.STANDARD:
+            # Standard observation for interactive actions
             try:
                 from capabilities.accessibility.tree import tree_extractor
                 state = tree_extractor.get_computer_state(force_refresh=force_refresh)
@@ -105,16 +163,49 @@ class Observer:
             except Exception:
                 pass
 
-        return EnvironmentObservation(
-            current_directory=self.get_current_directory(),
-            active_application=active_app,
-            active_window=active_win,
-            recent_processes=[] if fast else self.get_running_process_sample(),
-            clipboard_preview=None if fast else self.get_clipboard_preview(),
-            ui_summary=ui_sum,
-            interactive_elements_count=count,
-            computer_state=state,
-        )
+            clip = self.get_clipboard_preview()
+            return EnvironmentObservation(
+                current_directory=self.get_current_directory(),
+                active_application=active_app,
+                active_window=active_win,
+                recent_processes=[],
+                clipboard_preview=clip,
+                ui_summary=ui_sum,
+                interactive_elements_count=count,
+                computer_state=state,
+                display_brightness=brightness,
+                tier=ObservationTier.STANDARD,
+            )
+
+        else:  # DEEP
+            # Comprehensive observation for ambiguous state, multi-step planning, and verification
+            try:
+                from capabilities.accessibility.tree import tree_extractor
+                state = tree_extractor.get_computer_state(force_refresh=True)
+                self.last_computer_state = state
+                if state.active_application and state.active_application != "Unknown":
+                    active_app = state.active_application
+                active_win = state.active_window_title
+                ui_sum = state.to_compact_prompt_summary()
+                count = len(state.interactive_elements)
+            except Exception:
+                pass
+
+            processes = self.get_running_process_sample()
+            clip = self.get_clipboard_preview()
+            return EnvironmentObservation(
+                current_directory=self.get_current_directory(),
+                active_application=active_app,
+                active_window=active_win,
+                recent_processes=processes,
+                clipboard_preview=clip,
+                ui_summary=ui_sum,
+                interactive_elements_count=count,
+                computer_state=state,
+                display_brightness=brightness,
+                tier=ObservationTier.DEEP,
+            )
+
 
 
 observer = Observer()

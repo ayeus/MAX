@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 from enum import Enum
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import Any, Callable
 from security.risk import RiskLevel
 
@@ -26,10 +26,11 @@ class Operation(BaseModel):
     description: str
     parameters: dict[str, Any] = Field(default_factory=dict)
     default_risk: RiskLevel = RiskLevel.LOW
+    platform: str = "macos"
+    verification_support: str = "deterministic"
     handler: Callable[..., ExecutionResult] | None = None
 
-    class Config:
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
 class Capability(ABC):
@@ -37,6 +38,7 @@ class Capability(ABC):
 
     name: str
     description: str
+    platform: str = "macos"
 
     @abstractmethod
     def get_operations(self) -> list[Operation]:
@@ -52,16 +54,20 @@ class Capability(ABC):
         return {
             "capability": self.name,
             "description": self.description,
+            "platform": getattr(self, "platform", "macos"),
             "operations": [
                 {
                     "name": op.name,
                     "description": op.description,
                     "parameters": op.parameters,
+                    "platform": getattr(op, "platform", "macos"),
                     "default_risk": op.default_risk.value,
+                    "verification_support": getattr(op, "verification_support", "deterministic"),
                 }
                 for op in self.get_operations()
             ],
         }
+
 
     def execute(self, action: str, args: dict[str, Any]) -> ExecutionResult:
         """Execute a specific action with provided arguments."""

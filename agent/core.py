@@ -7,13 +7,14 @@ import threading
 from typing import Any, Optional
 from pydantic import BaseModel, Field
 
-from .observer import observer, AgentObservation
+from .observer import observer, AgentObservation, ObservationTier
 from .context import assemble_context, AgentContext
 from .planner import Planner, Plan, PlanStep
 from .executor import Executor
 from .replanner import Replanner
 from .goal import Goal, Subgoal, SubgoalStatus, ActionIntent, ExpectedPostcondition, PostconditionType, TargetReference
 from .perception import perception_pipeline, PerceptionMethod
+from .latency import latency_tracker, LatencyReport
 from capabilities import initialize_default_capabilities
 from capabilities.base import ExecutionResult
 from capabilities.accessibility.grounding import TargetConstraints
@@ -64,6 +65,8 @@ class AgentExecutionReport(BaseModel):
     limitations: list[str] = Field(default_factory=list)
     trace: Optional[ComputerUseTrace] = None
     goal_model: Optional[Goal] = None
+    latency_report: Optional[LatencyReport] = None
+
 
 
 class AgentCore:
@@ -89,15 +92,18 @@ class AgentCore:
 
         trace = ComputerUseTrace(goal=user_request)
 
-        # 1. Observe & Assemble Context
-        context = assemble_context()
+        latency_tracker.mark_planning_start()
+        # 1. Observe & Assemble Context (fast tier to avoid cold planning latency)
+        context = assemble_context(fast=True)
 
         # 2. Plan
         plan = self.planner.create_plan(user_request, context)
+        latency_tracker.mark_planning_end()
 
         if self._cancel_event.is_set():
             self.state = AgentState.CANCELLED
             trace.final_status = "CANCELLED"
+            latency_tracker.mark_completion()
             return AgentExecutionReport(
                 user_request=user_request,
                 thought="Cancelled during planning",
@@ -108,27 +114,60 @@ class AgentCore:
                 overall_success=False,
                 limitations=["Execution was cancelled by user."],
                 trace=trace,
+                latency_report=latency_tracker.current,
             )
 
         # If planner failed or returned no steps
         if not plan.plan:
-            self.state = AgentState.FAILED
-            goal_eval = GoalEvaluation(
-                status=GoalStatus.UNSATISFIED,
-                explanation=plan.thought or f"Unable to formulate plan for '{user_request}'",
+            thought_l = (plan.thought or "").lower()
+            is_unsupported = any(
+                w in thought_l
+                for w in (
+                    "not supported", "cannot perform", "can't perform", "unsupported",
+                    "no registered capability", "don't have a supported", "not have a supported"
+                )
             )
-            trace.final_status = "FAILED"
-            return AgentExecutionReport(
-                user_request=user_request,
-                thought=plan.thought,
-                steps_executed=[],
-                final_summary=f"Goal: {user_request}\nStatus: UNSATISFIED (State: FAILED)\n\nGoal Evaluation: {goal_eval.explanation}",
-                state=self.state,
-                goal_evaluation=goal_eval,
-                overall_success=False,
-                limitations=["Planner produced no executable steps."],
-                trace=trace,
-            )
+
+            if is_unsupported:
+                self.state = AgentState.UNSUPPORTED
+                goal_eval = GoalEvaluation(
+                    status=GoalStatus.UNSUPPORTED,
+                    explanation=plan.thought or f"I don't have a supported capability to perform '{user_request}'.",
+                )
+                trace.final_status = "UNSUPPORTED"
+                latency_tracker.mark_completion()
+                return AgentExecutionReport(
+                    user_request=user_request,
+                    thought=plan.thought,
+                    steps_executed=[],
+                    final_summary=f"Goal: {user_request}\nStatus: UNSUPPORTED\n\n{goal_eval.explanation}",
+                    state=self.state,
+                    goal_evaluation=goal_eval,
+                    overall_success=False,
+                    limitations=[goal_eval.explanation],
+                    trace=trace,
+                    latency_report=latency_tracker.current,
+                )
+            else:
+                self.state = AgentState.FAILED
+                goal_eval = GoalEvaluation(
+                    status=GoalStatus.UNSATISFIED,
+                    explanation=plan.thought or f"Unable to formulate plan for '{user_request}'",
+                )
+                trace.final_status = "FAILED"
+                latency_tracker.mark_completion()
+                return AgentExecutionReport(
+                    user_request=user_request,
+                    thought=plan.thought,
+                    steps_executed=[],
+                    final_summary=f"Goal: {user_request}\nStatus: UNSATISFIED (State: FAILED)\n\nGoal Evaluation: {goal_eval.explanation}",
+                    state=self.state,
+                    goal_evaluation=goal_eval,
+                    overall_success=False,
+                    limitations=["Planner produced no executable steps."],
+                    trace=trace,
+                    latency_report=latency_tracker.current,
+                )
 
         executed_records: list[StepExecutionRecord] = []
         limitations: list[str] = []
@@ -197,11 +236,14 @@ class AgentCore:
 
             # PRE-OBSERVATION (authoritative baseline for state delta)
             is_gui_action = step.capability in ("applications", "accessibility", "vision")
-            pre_obs = observer.observe(fast=not is_gui_action, include_ui=is_gui_action)
+            tier = ObservationTier.STANDARD if is_gui_action else ObservationTier.FAST
+            pre_obs = observer.observe(tier=tier)
 
             # EXECUTING
             self.state = AgentState.EXECUTING
+            latency_tracker.mark_execution_start()
             res = self.executor.execute_step(step)
+            latency_tracker.mark_first_action_dispatched()
 
             if self._cancel_event.is_set():
                 self.state = AgentState.CANCELLED
@@ -221,7 +263,7 @@ class AgentCore:
 
             # POST-OBSERVATION: capture immediate post-action state
             self.state = AgentState.OBSERVING
-            post_obs = observer.observe(fast=not is_gui_action, include_ui=is_gui_action, force_refresh=True)
+            post_obs = observer.observe(tier=tier, force_refresh=True)
 
             # Compute State Delta
             delta_summary = []
@@ -243,6 +285,7 @@ class AgentCore:
             # VERIFYING: Deterministic-first verification comparing pre/post state
             self.state = AgentState.VERIFYING
             step_verif = goal_evaluator.evaluate_step(step, res, post_obs, pre_observation=pre_obs)
+            latency_tracker.mark_first_verification()
 
             record = StepExecutionRecord(
                 step=step,
@@ -333,6 +376,7 @@ class AgentCore:
             limitations=limitations,
         )
 
+        latency_tracker.mark_completion()
         return AgentExecutionReport(
             user_request=user_request,
             thought=plan.thought,
@@ -343,6 +387,7 @@ class AgentCore:
             overall_success=overall_success,
             limitations=limitations,
             trace=trace,
+            latency_report=latency_tracker.current,
         )
 
     def execute_goal(self, goal: Goal, max_steps: int = 15) -> AgentExecutionReport:

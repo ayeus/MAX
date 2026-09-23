@@ -5,11 +5,12 @@ import logging
 import os
 from pathlib import Path
 import time
-from typing import Callable, Optional
+from typing import Any, Callable, Optional, TYPE_CHECKING
+if TYPE_CHECKING:
+    from agent.core import AgentCore
 from rich.console import Console
 from rich.panel import Panel
 
-from agent.core import AgentCore
 from voice.recorder import record_microphone
 from voice.tts import speak_text, stop_speaking, play_earcon
 from voice.whisper_stt import transcribe_audio, is_whisper_available
@@ -55,7 +56,8 @@ class VoiceAssistant:
         ack_phrase: str = "Yes, I'm listening.",
         earcon_sound: str = "/System/Library/Sounds/Tink.aiff",
         use_earcon_ack: bool = True,
-        agent: Optional[AgentCore] = None,
+        use_continuous_stream: bool = False,
+        agent: Optional[Any] = None,
         console: Optional[Console] = None,
     ):
         self.wake_detector = WakeWordDetector(wake_word=wake_word)
@@ -64,11 +66,50 @@ class VoiceAssistant:
         self.ack_phrase = ack_phrase
         self.earcon_sound = earcon_sound
         self.use_earcon_ack = use_earcon_ack
-        self.agent = agent or AgentCore()
+        self.use_continuous_stream = use_continuous_stream
+        if agent is None:
+            from agent.core import AgentCore
+            self.agent = AgentCore()
+        else:
+            self.agent = agent
+
+        from voice.normalization import normalizer
+        from agent.latency import latency_tracker
+        self.normalizer = normalizer
+        self.latency_tracker = latency_tracker
+        self._audio_stream = None
+
         self.console = console or Console()
         self.is_running = False
         self.state: VoiceState = VoiceState.IDLE
         self.state_updated_at: float = time.time()
+
+    @property
+    def audio_stream(self):
+        if self._audio_stream is None:
+            from voice.audio_stream import audio_stream
+            self._audio_stream = audio_stream
+        return self._audio_stream
+
+    def warmup(self) -> None:
+        """Pre-warm Whisper model, DisplayServices, and continuous audio stream for minimal latency."""
+        try:
+            from voice.whisper_stt import STTService
+            STTService.preload([self.whisper_model])
+        except Exception as e:
+            logger.warning(f"Could not preload Whisper model: {e}")
+
+        try:
+            from macos.brightness import is_brightness_supported
+            is_brightness_supported()
+        except Exception:
+            pass
+
+        if self.use_continuous_stream:
+            try:
+                self.audio_stream.start(timeout=2.0)
+            except Exception as e:
+                logger.warning(f"Could not warm continuous audio stream: {e}")
 
     def set_state(self, new_state: VoiceState) -> None:
         """Thread-safe state transition with timestamp recording."""
@@ -108,6 +149,21 @@ class VoiceAssistant:
     def listen_and_process_wake_word(self, duration: float = 3.0) -> WakeDetectionResult:
         """Capture a short audio sample and evaluate whether the wake word was spoken."""
         self.set_state(VoiceState.WAKE_DETECTING)
+
+        if self.use_continuous_stream and self.audio_stream.is_running:
+            waveform = self.audio_stream.capture_utterance(max_duration=duration, silence_timeout=0.8, include_pre_roll=True)
+            if waveform is None:
+                self.set_state(VoiceState.IDLE)
+                return WakeDetectionResult(detected=False)
+
+            self.set_state(VoiceState.TRANSCRIBING)
+            stt = transcribe_audio(audio_waveform=waveform, model_name=self.whisper_model)
+            if not stt.success or not stt.text:
+                self.set_state(VoiceState.IDLE)
+                return WakeDetectionResult(detected=False)
+
+            return self.wake_detector.detect(stt.text)
+
         rec = record_microphone(duration_seconds=duration, vad=True, silence_timeout=0.8)
         if not rec.success or not rec.wav_path:
             self.set_state(VoiceState.IDLE)
@@ -133,7 +189,26 @@ class VoiceAssistant:
     def record_and_transcribe_task(self, max_duration: float = 8.0) -> Optional[str]:
         """Record the user's task prompt using Voice Activity Detection and transcribe it."""
         self.set_state(VoiceState.CAPTURING)
+        self.latency_tracker.mark_capture_start()
+
+        if self.use_continuous_stream and self.audio_stream.is_running:
+            waveform = self.audio_stream.capture_utterance(max_duration=max_duration, silence_timeout=1.2, include_pre_roll=True)
+            self.latency_tracker.mark_capture_end()
+            if waveform is None:
+                self.set_state(VoiceState.IDLE)
+                return None
+
+            self.set_state(VoiceState.TRANSCRIBING)
+            self.latency_tracker.mark_stt_start()
+            stt = transcribe_audio(audio_waveform=waveform, model_name=self.whisper_model)
+            self.latency_tracker.mark_stt_end()
+            if not stt.success or not stt.text:
+                self.set_state(VoiceState.IDLE)
+                return None
+            return stt.text.strip()
+
         rec = record_microphone(duration_seconds=max_duration, vad=True, silence_timeout=1.2)
+        self.latency_tracker.mark_capture_end()
         if not rec.success or not rec.wav_path:
             self.set_state(VoiceState.IDLE)
             return None
@@ -141,7 +216,9 @@ class VoiceAssistant:
         wav_p = Path(rec.wav_path)
         try:
             self.set_state(VoiceState.TRANSCRIBING)
+            self.latency_tracker.mark_stt_start()
             stt = transcribe_audio(wav_p, model_name=self.whisper_model)
+            self.latency_tracker.mark_stt_end()
             if not stt.success or not stt.text:
                 self.set_state(VoiceState.IDLE)
                 return None
@@ -183,6 +260,8 @@ class VoiceAssistant:
             self.set_state(VoiceState.IDLE)
             return False
 
+        self.latency_tracker.reset()
+        self.latency_tracker.mark_wake_detected()
         self.console.print(f"\n[bold green]✨ Wake word detected![/bold green] (Spoken: \"{detection.raw_text}\")")
 
         # Check for immediate cancel
@@ -222,6 +301,17 @@ class VoiceAssistant:
 
             self.console.print(f"[bold white]You asked:[/bold white] \"{task_to_run}\"")
 
+        # Linguistic normalization & ambiguity gate
+        interp = self.normalizer.normalize(task_to_run)
+        self.latency_tracker.mark_normalization_end()
+
+        if interp.is_ambiguous and interp.clarification_prompt:
+            self.console.print(f"[bold yellow]🤔 Ambiguous request:[/bold yellow] {interp.ambiguity_reason}")
+            self.console.print(f"[bold cyan]Clarification:[/bold cyan] \"{interp.clarification_prompt}\"")
+            speak_text(interp.clarification_prompt, voice=self.voice)
+            self.set_state(VoiceState.IDLE)
+            return True
+
         self.execute_task(task_to_run)
         self.set_state(VoiceState.IDLE)
         return True
@@ -233,6 +323,8 @@ class VoiceAssistant:
             self.console.print("Please install whisper: pip install openai-whisper")
             return
 
+        self.use_continuous_stream = True
+        self.warmup()
         self.is_running = True
         self.console.print(Panel(
             f"[bold cyan]🎙️  MAX Hands-Free Voice Assistant Active[/bold cyan]\n"
@@ -253,4 +345,6 @@ class VoiceAssistant:
             speak_text("Goodbye!", voice=self.voice)
         finally:
             self.is_running = False
+            if self._audio_stream and self._audio_stream.is_running:
+                self._audio_stream.stop()
             self.set_state(VoiceState.IDLE)

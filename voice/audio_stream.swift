@@ -65,11 +65,10 @@ inputNode.installTap(onBus: bus, bufferSize: 1024, format: inputFormat) { (input
         }
     }
 
-    if status == .haveData && outputBuffer.frameLength > 0 {
+    if (status == .haveData || status == .inputRanDry) && outputBuffer.frameLength > 0 {
         let byteCount = Int(outputBuffer.frameLength) * 2 // 16-bit = 2 bytes per sample
         if let channelData = outputBuffer.int16ChannelData {
-            let data = Data(bytes: channelData[0], count: byteCount)
-            stdoutHandle.write(data)
+            write(STDOUT_FILENO, channelData[0], byteCount)
         }
     }
 }

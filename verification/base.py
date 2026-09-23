@@ -34,6 +34,7 @@ class VerificationResult(BaseModel):
     explanation: str
     evidence: dict[str, Any] = Field(default_factory=dict)
     confidence: float = 1.0
+    observer_source: Optional[str] = None
 
 
 class GoalEvaluation(BaseModel):

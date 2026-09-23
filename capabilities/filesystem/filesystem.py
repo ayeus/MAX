@@ -12,6 +12,7 @@ from security.policy import SecurityPolicy, PolicyViolation
 from security.confirmation import request_user_confirmation
 from security.audit import audit_log
 from macos.applescript import run_applescript, escape_applescript_string
+from app.config import settings
 
 
 class FilesystemCapability(Capability):
@@ -304,6 +305,8 @@ class FilesystemCapability(Capability):
                 capability=self.name,
                 action="move_file",
                 error=f"Source path '{src}' does not exist.",
+                data={"source": str(src), "source_missing": True},
+                evidence={"source_missing": True, "path": str(src)},
             )
 
         try:
@@ -339,6 +342,8 @@ class FilesystemCapability(Capability):
                 capability=self.name,
                 action="move_to_trash",
                 error=f"Target path '{target}' does not exist.",
+                data={"path": str(target), "already_absent": True},
+                evidence={"already_absent": True, "path": str(target)},
             )
 
         # Policy & Confirmation check
@@ -352,17 +357,18 @@ class FilesystemCapability(Capability):
                 error=str(pv),
             )
 
-        confirmed = request_user_confirmation(
-            action_description=f"Move '{target}' to macOS Trash (reversible).",
-            targets=[str(target)],
-        )
-        if not confirmed:
-            return ExecutionResult(
-                success=False,
-                capability=self.name,
-                action="move_to_trash",
-                error="Cancelled by user.",
+        if settings.require_confirmation_for_high_risk:
+            confirmed = request_user_confirmation(
+                action_description=f"Move '{target}' to macOS Trash (reversible).",
+                targets=[str(target)],
             )
+            if not confirmed:
+                return ExecutionResult(
+                    success=False,
+                    capability=self.name,
+                    action="move_to_trash",
+                    error="Cancelled by user.",
+                )
 
         # Use macOS Finder AppleScript to send to Trash reversibly with escaped path
         escaped_target = escape_applescript_string(str(target))

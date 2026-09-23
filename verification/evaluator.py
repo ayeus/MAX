@@ -32,12 +32,109 @@ if TYPE_CHECKING:
     from agent.planner import PlanStep
     from agent.observer import AgentObservation
 
+import os
+from macos.shell import run_shell_command
+
 CUSTOM_POSTCONDITION_REGISTRY: dict[str, Any] = {}
 
 
 def register_custom_verifier(name: str, verifier_fn: Any) -> None:
     """Register an explicit custom verification function."""
     CUSTOM_POSTCONDITION_REGISTRY[name] = verifier_fn
+
+
+def is_process_running_in_os(app_name: str) -> bool:
+    """Independently query macOS process table for running application or binary."""
+    app_clean = (app_name or "").strip()
+    if not app_clean:
+        return False
+    try:
+        res = run_shell_command(f"/usr/bin/pgrep -i -f '{app_clean}'", timeout=2)
+        if res.success and res.stdout.strip():
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def _parse_terminal_target(command: str) -> tuple[str, Optional[str], Optional[str]]:
+    """Parse common deterministic shell commands to identify action, target path, and extra info.
+
+    Returns (action_type, target_path, extra_arg)
+    action_type can be 'mkdir', 'rm', 'redirect_write', 'redirect_append', 'touch', 'inspect', or 'unknown'
+    """
+    cmd = (command or "").strip()
+    if not cmd:
+        return ("unknown", None, None)
+
+    # Redirections
+    if ">>" in cmd:
+        parts = cmd.split(">>", 1)
+        target = parts[1].strip().split()[0].strip("'\"") if parts[1].strip() else None
+        return ("redirect_append", target, parts[0].strip())
+    elif ">" in cmd:
+        parts = cmd.split(">", 1)
+        target = parts[1].strip().split()[0].strip("'\"") if parts[1].strip() else None
+        return ("redirect_write", target, parts[0].strip())
+
+    tokens = cmd.split()
+    base = os.path.basename(tokens[0])
+
+    if base in ("mkdir",):
+        args = [t.strip("'\"") for t in tokens[1:] if not t.startswith("-")]
+        target = args[-1] if args else None
+        return ("mkdir", target, None)
+
+    elif base in ("rm", "unlink"):
+        args = [t.strip("'\"") for t in tokens[1:] if not t.startswith("-")]
+        target = args[-1] if args else None
+        return ("rm", target, None)
+
+    elif base in ("touch",):
+        args = [t.strip("'\"") for t in tokens[1:] if not t.startswith("-")]
+        target = args[-1] if args else None
+        return ("touch", target, None)
+
+    elif base in ("sw_vers", "whoami", "uname", "pwd", "date", "uptime", "id", "hostname", "which", "echo", "cat", "ps", "ls", "df", "top", "env"):
+        return ("inspect", None, None)
+
+    return ("unknown", None, None)
+
+
+def _requires_interaction_completion(user_request: str, steps_executed: list[Any]) -> tuple[bool, Optional[str]]:
+    """Determine if a user request indicates an interactive requirement inside an application
+
+    (e.g. typing text, messaging, search) that has not yet been executed.
+
+    CRITICAL INVARIANT:
+    This heuristic can ONLY identify a missing requirement to prevent false SATISFIED.
+    It can NEVER be used to prove completion or return SATISFIED.
+    """
+    req_lower = user_request.lower()
+    interaction_keywords = [
+        "message", "send", "type", "write", "saying", "search for", "compose", "note saying", "text saying"
+    ]
+    has_keyword = any(kw in req_lower for kw in interaction_keywords)
+    if not has_keyword:
+        return False, None
+
+    executed_actions = [(r.step.capability.lower(), r.step.action.lower()) for r in steps_executed]
+    has_interaction_executed = any(
+        act in (
+            "type_into_element",
+            "click_element",
+            "send_keystroke",
+            "send_key_chord",
+            "execute_command",
+            "send_keys",
+            "click",
+            "write_file",
+        )
+        for _, act in executed_actions
+    )
+    if not has_interaction_executed:
+        return True, "Application was launched, but requested action inside the application (typing, clicking, or messaging) has not yet been executed."
+    return False, None
 
 
 class GoalEvaluator:
@@ -75,30 +172,56 @@ class GoalEvaluator:
         if cap in ("applications", "app") or action in ("launch_application", "quit_application", "activate_application", "is_application_running", "list_installed_applications"):
             if action == "launch_application":
                 app_target = step.args.get("application_name", "")
-                verified_running = result.verification.get("process_present_in_process_list", False)
-                if not verified_running:
-                    # Double-check against latest observation active app or process list
-                    if observation.active_application and app_target.lower() in observation.active_application.lower():
-                        verified_running = True
+                verified_running = False
+                # Independent observation
+                if observation.active_application and app_target.lower() in observation.active_application.lower():
+                    verified_running = True
+                elif observation.recent_processes and any(app_target.lower() in p.lower() for p in observation.recent_processes):
+                    verified_running = True
+                elif observation.computer_state and observation.computer_state.active_application and app_target.lower() in observation.computer_state.active_application.lower():
+                    verified_running = True
+                elif is_process_running_in_os(app_target):
+                    verified_running = True
+                elif result.verification.get("process_present_in_process_list") is True and result.verification.get("open_command_exit_zero") is not False:
+                    # Supporting evidence when independent OS query is inconclusive or in synthetic environment
+                    verified_running = True
+
+                # If result explicitly records that process was NOT in process list, respect failure
+                if result.verification.get("process_present_in_process_list") is False:
+                    verified_running = False
+
                 if verified_running:
                     return VerificationResult(
                         status=GoalStatus.SATISFIED,
                         explanation=f"Application '{app_target}' was verified running in OS process list.",
                         evidence={"application": app_target, "verified_running": True},
+                        observer_source="os_process_table",
                     )
                 return VerificationResult(
                     status=GoalStatus.UNSATISFIED,
                     explanation=f"Application '{app_target}' was launched but not found in running process list.",
                     evidence={"application": app_target, "verified_running": False},
+                    observer_source="os_process_table",
                 )
 
             elif action == "quit_application":
                 app_target = step.args.get("application_name", "")
-                proc_gone = result.verification.get("process_terminated", False)
+                still_running = False
+                if observation.active_application and app_target.lower() in observation.active_application.lower():
+                    still_running = True
+                elif observation.recent_processes and any(app_target.lower() in p.lower() for p in observation.recent_processes):
+                    still_running = True
+                elif is_process_running_in_os(app_target):
+                    still_running = True
+                elif result.verification.get("process_terminated") is False:
+                    still_running = True
+
+                proc_gone = not still_running
                 return VerificationResult(
                     status=GoalStatus.SATISFIED if proc_gone else GoalStatus.UNSATISFIED,
                     explanation=f"Application '{app_target}' termination: {proc_gone}",
                     evidence={"application": app_target, "terminated": proc_gone},
+                    observer_source="os_process_table",
                 )
 
             elif action == "activate_application":
@@ -109,11 +232,13 @@ class GoalEvaluator:
                         status=GoalStatus.SATISFIED,
                         explanation=f"Application '{app_target}' is verified as frontmost active application.",
                         evidence={"application": app_target, "active_application": observation.active_application},
+                        observer_source="observation",
                     )
                 return VerificationResult(
                     status=GoalStatus.UNSATISFIED,
                     explanation=f"Application '{app_target}' was activated but frontmost application is '{observation.active_application}'.",
                     evidence={"application": app_target, "active_application": observation.active_application},
+                    observer_source="observation",
                 )
 
             elif action == "is_application_running":
@@ -130,12 +255,14 @@ class GoalEvaluator:
                         status=GoalStatus.SATISFIED,
                         explanation=f"Application '{app_target}' is verified as running.",
                         evidence={"application": app_target, "is_running": True},
+                        observer_source="os_process_table",
                     )
                 else:
                     return VerificationResult(
                         status=GoalStatus.UNSATISFIED,
                         explanation=f"Application '{app_target}' is verified as NOT running.",
                         evidence={"application": app_target, "is_running": False},
+                        observer_source="os_process_table",
                     )
 
             elif action == "list_installed_applications":
@@ -143,54 +270,129 @@ class GoalEvaluator:
                     status=GoalStatus.SATISFIED,
                     explanation="Installed applications listed from system bundle directories.",
                     evidence={"count": result.data.get("count", 0)},
+                    observer_source="filesystem",
                 )
 
         # 2. Deterministic Filesystem Verification
         elif cap == "filesystem":
             if action == "write_file":
                 p = Path(step.args.get("path", "")).expanduser()
-                if p.exists() and p.is_file():
-                    sz = p.stat().st_size
+                if not (p.exists() and p.is_file()):
                     return VerificationResult(
-                        status=GoalStatus.SATISFIED,
-                        explanation=f"File '{p}' verified on disk ({sz} bytes).",
-                        evidence={"path": str(p), "size_bytes": sz},
+                        status=GoalStatus.UNSATISFIED,
+                        explanation=f"File '{p}' was not found on disk after write operation.",
+                        evidence={"path": str(p), "exists": False},
+                        observer_source="filesystem",
                     )
+
+                sz = p.stat().st_size
+                expected_content = step.args.get("content")
+                if expected_content is not None:
+                    try:
+                        actual_content = p.read_text(encoding="utf-8", errors="replace")
+                        if actual_content != expected_content:
+                            return VerificationResult(
+                                status=GoalStatus.UNSATISFIED,
+                                explanation=f"File content mismatch in '{p}': expected '{expected_content[:50]}...', found '{actual_content[:50]}...'.",
+                                evidence={"path": str(p), "expected_content": expected_content[:100], "actual_content": actual_content[:100]},
+                                observer_source="filesystem",
+                            )
+                        return VerificationResult(
+                            status=GoalStatus.SATISFIED,
+                            explanation=f"File '{p}' verified on disk with matching content ({len(actual_content)} chars).",
+                            evidence={"path": str(p), "size_bytes": sz, "content_verified": True},
+                            observer_source="filesystem",
+                        )
+                    except (FileNotFoundError, OSError):
+                        if sz == len(expected_content.encode("utf-8")):
+                            return VerificationResult(
+                                status=GoalStatus.SATISFIED,
+                                explanation=f"File '{p}' verified on disk ({sz} bytes).",
+                                evidence={"path": str(p), "size_bytes": sz},
+                                observer_source="filesystem",
+                            )
+                        return VerificationResult(
+                            status=GoalStatus.UNSATISFIED,
+                            explanation=f"File '{p}' could not be read to verify content.",
+                            evidence={"path": str(p)},
+                            observer_source="filesystem",
+                        )
+
                 return VerificationResult(
-                    status=GoalStatus.UNSATISFIED,
-                    explanation=f"File '{p}' was not found on disk after write operation.",
-                    evidence={"path": str(p), "exists": False},
+                    status=GoalStatus.SATISFIED,
+                    explanation=f"File '{p}' verified on disk ({sz} bytes).",
+                    evidence={"path": str(p), "size_bytes": sz},
+                    observer_source="filesystem",
                 )
 
             elif action == "move_file":
                 src = Path(step.args.get("source", "")).expanduser()
-                dst = Path(step.args.get("destination", "")).expanduser()
-                dst_exists = dst.exists()
+                raw_dst = Path(step.args.get("destination", "")).expanduser()
+                if raw_dst.is_dir():
+                    final_dst = raw_dst / src.name
+                elif result.data.get("destination"):
+                    final_dst = Path(result.data.get("destination", "")).expanduser()
+                else:
+                    final_dst = raw_dst
+
+                was_src_present = None
+                if pre_observation and pre_observation.metadata:
+                    was_src_present = pre_observation.metadata.get(f"exists:{src}")
+                if result.evidence.get("source_missing") is True:
+                    was_src_present = False
+
+                if was_src_present is False:
+                    return VerificationResult(
+                        status=GoalStatus.UNSATISFIED,
+                        explanation=f"Source file '{src}' was missing prior to move operation.",
+                        evidence={"source": str(src), "source_missing": True},
+                        observer_source="filesystem",
+                    )
+
+                dst_exists = final_dst.exists()
                 src_gone = not src.exists()
                 if dst_exists and src_gone:
                     return VerificationResult(
                         status=GoalStatus.SATISFIED,
-                        explanation=f"File successfully moved to '{dst}' and removed from '{src}'.",
-                        evidence={"source_gone": src_gone, "destination_exists": dst_exists},
+                        explanation=f"File successfully moved to '{final_dst}' and removed from '{src}'.",
+                        evidence={"source_gone": src_gone, "destination_exists": dst_exists, "final_destination": str(final_dst)},
+                        observer_source="filesystem",
                     )
                 return VerificationResult(
                     status=GoalStatus.UNSATISFIED,
-                    explanation=f"Move verification failed (src_gone={src_gone}, dst_exists={dst_exists}).",
-                    evidence={"source_gone": src_gone, "destination_exists": dst_exists},
+                    explanation=f"Move verification failed: source_gone={src_gone}, destination_exists={dst_exists} at '{final_dst}'.",
+                    evidence={"source_gone": src_gone, "destination_exists": dst_exists, "final_destination": str(final_dst)},
+                    observer_source="filesystem",
                 )
 
             elif action == "move_to_trash":
                 target = Path(step.args.get("path", "")).expanduser()
+                was_present_before = None
+                if pre_observation and pre_observation.metadata:
+                    was_present_before = pre_observation.metadata.get(f"exists:{target}")
+                if result.evidence.get("already_absent") is True or result.data.get("already_absent") is True:
+                    was_present_before = False
+
+                if was_present_before is False:
+                    return VerificationResult(
+                        status=GoalStatus.UNSATISFIED,
+                        explanation=f"Target '{target}' was already absent prior to execution; deletion transition not demonstrated.",
+                        evidence={"path": str(target), "already_absent": True},
+                        observer_source="filesystem",
+                    )
+
                 if not target.exists():
                     return VerificationResult(
                         status=GoalStatus.SATISFIED,
-                        explanation=f"Target '{target}' removed from original location.",
+                        explanation=f"Target '{target}' verified removed from original location.",
                         evidence={"path": str(target), "removed": True},
+                        observer_source="filesystem",
                     )
                 return VerificationResult(
                     status=GoalStatus.UNSATISFIED,
                     explanation=f"Target '{target}' still exists at original location after trash request.",
                     evidence={"path": str(target), "removed": False},
+                    observer_source="filesystem",
                 )
 
             elif action in ("read_file", "find_files", "list_directory", "get_metadata"):
@@ -198,6 +400,7 @@ class GoalEvaluator:
                     status=GoalStatus.SATISFIED,
                     explanation=f"Filesystem read operation '{action}' succeeded.",
                     evidence=result.evidence,
+                    observer_source="filesystem",
                 )
 
         # 3. Deterministic Task Verification
@@ -224,30 +427,165 @@ class GoalEvaluator:
                         evidence=result.data,
                     )
             elif action == "kill_task":
-                killed = result.verification.get("process_terminated", False)
+                pid = result.data.get("pid")
+                is_alive = True
+                if pid:
+                    try:
+                        import os
+                        os.kill(int(pid), 0)
+                        is_alive = True
+                    except OSError:
+                        is_alive = False
+                else:
+                    is_alive = not result.verification.get("process_terminated", False)
+                killed = not is_alive
                 return VerificationResult(
                     status=GoalStatus.SATISFIED if killed else GoalStatus.UNSATISFIED,
                     explanation=f"Task termination: {killed}",
                     evidence={"task_id": task_id, "killed": killed},
+                    observer_source="os_process_table",
                 )
 
         # 4. Terminal Command Verification
         elif cap == "terminal":
             exit_code = result.exit_code if result.exit_code is not None else result.data.get("exit_code", 0 if result.success else 1)
-            exit_zero = result.verification.get("exit_code_zero", exit_code == 0)
-            if exit_zero:
+            exit_zero = (exit_code == 0)
+
+            if not exit_zero or not result.success:
+                return VerificationResult(
+                    status=GoalStatus.UNSATISFIED,
+                    explanation=f"Shell command returned non-zero exit code: {exit_code}",
+                    evidence={"exit_code": exit_code, "stderr": result.data.get("stderr", "")},
+                    observer_source="terminal",
+                )
+
+            # Check explicit postcondition if provided
+            if step.expected_postcondition:
+                pre_cs = pre_observation.computer_state if pre_observation else None
+                post_cs = observation.computer_state if observation else None
+                post_eval = self.evaluate_postcondition(step.expected_postcondition, pre_cs, post_cs, result=result)
+                if post_eval.status != GoalStatus.UNKNOWN:
+                    return post_eval
+
+            # Check explicit file target and expected content in args
+            target_path_arg = step.args.get("expected_file") or step.args.get("target_path") or step.args.get("file") or step.args.get("path")
+            expected_content = step.args.get("expected_content")
+
+            cmd_str = step.args.get("command", "")
+            act_type, parsed_target, extra = _parse_terminal_target(cmd_str)
+            target_to_check = target_path_arg or parsed_target
+
+            if act_type == "mkdir" and target_to_check:
+                p = Path(target_to_check).expanduser()
+                if p.exists() and p.is_dir():
+                    return VerificationResult(
+                        status=GoalStatus.SATISFIED,
+                        explanation=f"Directory '{p}' verified on disk after mkdir.",
+                        evidence={"path": str(p), "is_dir": True, "exit_code": exit_code},
+                        observer_source="filesystem",
+                    )
+                if step.expected_postcondition or target_path_arg or expected_content:
+                    return VerificationResult(
+                        status=GoalStatus.UNSATISFIED,
+                        explanation=f"Directory '{p}' does not exist on disk after mkdir command.",
+                        evidence={"path": str(p), "is_dir": False},
+                        observer_source="filesystem",
+                    )
+                if exit_zero:
+                    return VerificationResult(
+                        status=GoalStatus.SATISFIED,
+                        explanation=f"Directory creation command completed with exit code 0.",
+                        evidence={"path": str(p), "exit_code": exit_code},
+                        observer_source="terminal",
+                    )
+                return VerificationResult(
+                    status=GoalStatus.UNSATISFIED,
+                    explanation=f"Directory '{p}' does not exist on disk after mkdir command.",
+                    evidence={"path": str(p), "is_dir": False},
+                    observer_source="filesystem",
+                )
+
+            if act_type in ("redirect_write", "touch") or (target_to_check and expected_content is not None):
+                if target_to_check:
+                    p = Path(target_to_check).expanduser()
+                    if not (p.exists() and p.is_file()):
+                        return VerificationResult(
+                            status=GoalStatus.UNSATISFIED,
+                            explanation=f"Target file '{p}' does not exist on disk after shell execution.",
+                            evidence={"path": str(p), "exists": False},
+                            observer_source="filesystem",
+                        )
+                    if expected_content is not None:
+                        try:
+                            actual_content = p.read_text(encoding="utf-8", errors="replace")
+                            if actual_content != expected_content:
+                                return VerificationResult(
+                                    status=GoalStatus.UNSATISFIED,
+                                    explanation=f"File content mismatch in '{p}': expected '{expected_content[:50]}...', found '{actual_content[:50]}...'.",
+                                    evidence={"path": str(p), "expected": expected_content[:100], "actual": actual_content[:100]},
+                                    observer_source="filesystem",
+                                )
+                            return VerificationResult(
+                                status=GoalStatus.SATISFIED,
+                                explanation=f"File '{p}' verified on disk with expected content.",
+                                evidence={"path": str(p), "content_matched": True},
+                                observer_source="filesystem",
+                            )
+                        except (FileNotFoundError, OSError):
+                            return VerificationResult(
+                                status=GoalStatus.UNSATISFIED,
+                                explanation=f"Could not read target file '{p}' to verify content.",
+                                evidence={"path": str(p)},
+                                observer_source="filesystem",
+                            )
+                    # File exists and was created
+                    return VerificationResult(
+                        status=GoalStatus.SATISFIED,
+                        explanation=f"File '{p}' verified on disk after shell command.",
+                        evidence={"path": str(p), "size_bytes": p.stat().st_size},
+                        observer_source="filesystem",
+                    )
+
+            if act_type == "rm" and target_to_check:
+                p = Path(target_to_check).expanduser()
+                was_present = None
+                if pre_observation and pre_observation.metadata:
+                    was_present = pre_observation.metadata.get(f"exists:{p}")
+                if was_present is False or result.evidence.get("already_absent") is True:
+                    return VerificationResult(
+                        status=GoalStatus.UNSATISFIED,
+                        explanation=f"File '{p}' was already absent prior to execution; deletion transition not demonstrated.",
+                        evidence={"path": str(p), "already_absent": True},
+                        observer_source="filesystem",
+                    )
+                if p.exists():
+                    return VerificationResult(
+                        status=GoalStatus.UNSATISFIED,
+                        explanation=f"File '{p}' still exists on disk after deletion command.",
+                        evidence={"path": str(p), "exists": True},
+                        observer_source="filesystem",
+                    )
                 return VerificationResult(
                     status=GoalStatus.SATISFIED,
-                    explanation="Shell command completed with exit code 0.",
-                    evidence={
-                        "exit_code": exit_code,
-                        "stdout": result.data.get("stdout", "")[:200],
-                    },
+                    explanation=f"File '{p}' verified removed from disk.",
+                    evidence={"path": str(p), "removed": True},
+                    observer_source="filesystem",
                 )
+
+            if act_type == "inspect":
+                return VerificationResult(
+                    status=GoalStatus.SATISFIED,
+                    explanation="Shell inspection command completed with exit code 0.",
+                    evidence={"exit_code": exit_code, "stdout": result.data.get("stdout", "")[:200]},
+                    observer_source="terminal",
+                )
+
+            # Execution completed with exit code 0, but no verifiable postcondition could be proven
             return VerificationResult(
-                status=GoalStatus.UNSATISFIED,
-                explanation=f"Shell command returned non-zero exit code: {exit_code}",
-                evidence={"exit_code": exit_code, "stderr": result.data.get("stderr", "")},
+                status=GoalStatus.UNKNOWN,
+                explanation="Shell command completed with exit code 0, but resulting state or postcondition could not be independently verified.",
+                evidence={"exit_code": exit_code, "stdout": result.data.get("stdout", "")[:200]},
+                observer_source="terminal",
             )
 
         # 5. Vision / Visual Verification
@@ -280,26 +618,23 @@ class GoalEvaluator:
                     status=GoalStatus.SATISFIED,
                     explanation=f"Browser query operation '{action}' successfully retrieved page data.",
                     evidence=result.evidence,
+                    observer_source="browser",
                 )
             elif action in ("open_url", "search_web"):
-                if result.success and (result.verification.get("url_opened") or result.verification.get("browser_opened") or result.verification.get("search_dispatched")):
-                    target = step.args.get("url") or step.args.get("query") or ""
-                    return VerificationResult(
-                        status=GoalStatus.SATISFIED,
-                        explanation=f"Browser action '{action}' navigated to '{target}'.",
-                        evidence=result.evidence,
-                    )
-                elif not result.success:
+                if not result.success:
                     return VerificationResult(
                         status=GoalStatus.UNSATISFIED,
                         explanation=result.error or f"Browser action '{action}' failed.",
                         evidence=result.evidence,
+                        observer_source="browser",
                     )
-            return VerificationResult(
-                status=GoalStatus.UNKNOWN,
-                explanation=f"Browser action '{action}' was dispatched, but no explicit tab/page state verification is implemented.",
-                evidence=result.evidence,
-            )
+                # Dispatching a navigation action without independent DOM/tab verification is UNKNOWN
+                return VerificationResult(
+                    status=GoalStatus.UNKNOWN,
+                    explanation=f"Browser action '{action}' was dispatched, but no explicit tab/page state verification is implemented.",
+                    evidence=result.evidence,
+                    observer_source="browser",
+                )
 
         # 7. Accessibility Verification
         elif cap == "accessibility":
@@ -702,10 +1037,13 @@ class GoalEvaluator:
             ]
 
             if not subsequent_retries or subsequent_retries[-1].verification.status != GoalStatus.SATISFIED:
-                unrecovered_failures.append(r)
+                # Invariant G: A retry recovers a failed requirement ONLY if independently verified SATISFIED.
+                # If retried and still not SATISFIED (e.g. UNKNOWN or UNSATISFIED), evaluate using the retry's record.
+                target_rec = subsequent_retries[-1] if subsequent_retries else r
+                unrecovered_failures.append(target_rec)
 
         if unrecovered_failures:
-            # Composition hierarchy (Invariant 3 & Test E): UNSUPPORTED > UNSATISFIED > UNKNOWN
+            # Composition hierarchy (Invariant 3 & Invariants C, D, E): UNSUPPORTED > UNSATISFIED > UNKNOWN
             unsupported = [f for f in unrecovered_failures if f.verification.status == GoalStatus.UNSUPPORTED]
             if unsupported:
                 failed = unsupported[-1]
@@ -742,25 +1080,15 @@ class GoalEvaluator:
                 remaining_requirements=[f"{s.capability}.{s.action}" for s in mandatory_remaining],
             )
 
-        # Check for unfulfilled interaction intent: if user requested typing/messaging/searching
-        # but only launch/inspection steps were executed
-        req_lower = user_request.lower()
-        interaction_intents = [
-            "message", "send", "type", "write", "saying", "search for", "compose", "note saying", "text saying"
-        ]
-        has_interaction_intent = any(intent in req_lower for intent in interaction_intents)
-        if has_interaction_intent:
-            executed_actions = [(r.step.capability.lower(), r.step.action.lower()) for r in steps_executed]
-            has_interaction_executed = any(
-                act in ("type_into_element", "click_element", "send_keystroke", "send_key_chord", "execute_command", "send_keys", "click")
-                for _, act in executed_actions
+        # Check for unfulfilled interaction intent using isolated helper (Core Problem 5):
+        # Heuristic inference may trigger more work / remain UNSATISFIED, but may NEVER prove SATISFIED.
+        requires_more, reason = _requires_interaction_completion(user_request, steps_executed)
+        if requires_more:
+            return GoalEvaluation(
+                status=GoalStatus.UNSATISFIED,
+                explanation=reason or "Application was launched, but requested action inside the application (typing, clicking, or messaging) has not yet been executed.",
+                remaining_requirements=["interact_inside_application"],
             )
-            if not has_interaction_executed:
-                return GoalEvaluation(
-                    status=GoalStatus.UNSATISFIED,
-                    explanation="Application was launched, but requested action inside the application (typing, clicking, or messaging) has not yet been executed.",
-                    remaining_requirements=["interact_inside_application"],
-                )
 
         # All executed steps are verified SATISFIED and no mandatory steps remain
         last_rec = steps_executed[-1]

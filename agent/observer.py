@@ -35,6 +35,7 @@ class EnvironmentObservation(BaseModel):
     computer_state: Optional[ComputerState] = None
     display_brightness: Optional[float] = None
     tier: ObservationTier = ObservationTier.STANDARD
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 # Alias for backward and forward compatibility

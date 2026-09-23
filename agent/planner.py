@@ -14,6 +14,8 @@ from .context import AgentContext
 from .intent import intent_resolver
 from voice.normalization import normalizer
 
+from verification.base import ExpectedPostcondition
+
 logger = logging.getLogger(__name__)
 
 
@@ -31,6 +33,8 @@ class PlanStep(BaseModel):
     args: dict[str, Any] = Field(default_factory=dict)
     verification_criteria: str = ""
     is_optional: bool = False
+    expected_postcondition: Optional[ExpectedPostcondition] = None
+    is_recovery: bool = False
 
 
 class Plan(BaseModel):

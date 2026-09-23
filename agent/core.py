@@ -200,12 +200,40 @@ class AgentCore:
                         ],
                         fast=False,
                     )
+                    verified_completed_steps = [
+                        f"{r.step.capability}.{r.step.action}"
+                        for r in executed_records
+                        if r.verification.status == GoalStatus.SATISFIED and not getattr(r.step, "is_recovery", False)
+                    ]
+                    failed_steps = [
+                        f"{r.step.capability}.{r.step.action} ({r.verification.explanation})"
+                        for r in executed_records
+                        if r.verification.status == GoalStatus.UNSATISFIED
+                    ]
+                    unknown_steps = [
+                        f"{r.step.capability}.{r.step.action} ({r.verification.explanation})"
+                        for r in executed_records
+                        if r.verification.status == GoalStatus.UNKNOWN
+                    ]
+                    recovery_steps = [
+                        f"{r.step.capability}.{r.step.action} (status: {r.verification.status.value})"
+                        for r in executed_records
+                        if getattr(r.step, "is_recovery", False)
+                    ]
+                    pending_reqs = goal_eval.remaining_requirements or [
+                        f"{s.capability}.{s.action}" for s in steps_queue if not s.is_optional
+                    ]
+
                     continuation_prompt = (
-                        f"Goal: {user_request}\n"
-                        f"Steps already completed successfully: {[f'{r.step.capability}.{r.step.action}' for r in executed_records]}\n"
+                        f"Original Goal: {user_request}\n"
+                        f"Verified Completed Steps: {verified_completed_steps}\n"
+                        f"Failed Steps: {failed_steps}\n"
+                        f"Unknown / Unverified Steps: {unknown_steps}\n"
+                        f"Recovery Steps Executed: {recovery_steps}\n"
+                        f"Pending Requirements: {pending_reqs}\n"
                         f"Current active application: {fresh_context.observation.active_application}\n"
                         f"Current active window: {fresh_context.observation.active_window}\n"
-                        f"Formulate the next concrete steps (e.g. typing text, clicking buttons, shortcuts) to fulfill the outcome."
+                        f"Formulate the next concrete steps to fulfill the remaining unverified outcome."
                     )
                     continuation_plan = self.planner.create_plan(continuation_prompt, fresh_context)
                     if continuation_plan and continuation_plan.plan:
@@ -229,6 +257,27 @@ class AgentCore:
             is_gui_action = step.capability in ("applications", "accessibility", "vision")
             tier = ObservationTier.STANDARD if is_gui_action else ObservationTier.FAST
             pre_obs = observer.observe(tier=tier)
+
+            # Record pre-existence for filesystem target paths
+            target_path = step.args.get("path") or step.args.get("source")
+            if target_path:
+                try:
+                    from pathlib import Path
+                    p = Path(target_path).expanduser()
+                    pre_obs.metadata[f"exists:{p}"] = p.exists()
+                except Exception:
+                    pass
+            elif step.capability == "terminal" and step.action == "execute_command":
+                cmd_str = step.args.get("command", "")
+                try:
+                    from verification.evaluator import _parse_terminal_target
+                    from pathlib import Path
+                    act_type, tgt, _ = _parse_terminal_target(cmd_str)
+                    if act_type in ("rm", "touch", "redirect_write") and tgt:
+                        p = Path(tgt).expanduser()
+                        pre_obs.metadata[f"exists:{p}"] = p.exists()
+                except Exception:
+                    pass
 
             # EXECUTING
             self.state = AgentState.EXECUTING
@@ -324,6 +373,7 @@ class AgentCore:
                         reason=step_verif.explanation,
                     )
                     if recovery_step:
+                        recovery_step.is_recovery = True
                         trace.items[-1].replan_reason = f"Recovery scheduled: {recovery_step.capability}.{recovery_step.action}"
                         # Invariant 4 & 5: Recovery success != original goal success.
                         # Preserve original user goal: re-queue failed step to be retried after recovery action!

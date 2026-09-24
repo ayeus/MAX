@@ -1,16 +1,49 @@
-"""Capabilities subsystem for MAX computer agent."""
+"""Capabilities subsystem for MAX computer agent.
+
+Provides both the canonical Dynamic Capability Platform interfaces and legacy
+Phase 1 capability implementations.
+"""
 
 from .base import Capability, Operation, ExecutionResult
+from .cache import CapabilityCache, InMemoryCapabilityCache
+from .discovery import (
+    CapabilityDiscoveryProvider,
+    DiscoveryError,
+    DiscoveryResult,
+    PermissionBlockedDiscovery,
+)
+from .models import (
+    AvailabilityInfo,
+    AvailabilityStatus,
+    CapabilityConstraint,
+    CapabilityDescriptor,
+    CapabilityProvenance,
+    CapabilityRisk,
+    CapabilityVersion,
+    ConstraintType,
+    OperationDescriptor,
+    ProviderCharacteristics,
+    ProviderHealth,
+    RequiredPermission,
+    VerificationContract,
+    VerificationStrategy,
+)
+from .provider import (
+    CapabilityExecutionProvider,
+    CapabilityProvider,
+    LegacyCapabilityAdapter,
+)
 from .registry import CapabilityRegistry, registry
-from .terminal import TerminalCapability
-from .filesystem import FilesystemCapability
-from .applications import ApplicationsCapability
-from .macos import MacOSSystemCapability
-from .developer import DeveloperCapability
+
 from .accessibility import AccessibilityCapability
+from .applications import ApplicationsCapability
 from .browser import BrowserCapability
-from .vision import VisionCapability
+from .developer import DeveloperCapability
+from .filesystem import FilesystemCapability
+from .macos import MacOSSystemCapability
 from .tasks import TaskCapability
+from .terminal import TerminalCapability
+from .vision import VisionCapability
 
 
 def initialize_default_capabilities() -> CapabilityRegistry:
@@ -29,15 +62,48 @@ def initialize_default_capabilities() -> CapabilityRegistry:
 
 
 __all__ = [
+    # Legacy interfaces
     "Capability",
     "Operation",
     "ExecutionResult",
     "CapabilityRegistry",
     "registry",
     "initialize_default_capabilities",
+    # Dynamic models
+    "AvailabilityStatus",
+    "AvailabilityInfo",
+    "RequiredPermission",
+    "CapabilityRisk",
+    "ConstraintType",
+    "CapabilityConstraint",
+    "VerificationStrategy",
+    "VerificationContract",
+    "CapabilityProvenance",
+    "CapabilityVersion",
+    "ProviderHealth",
+    "ProviderCharacteristics",
+    "OperationDescriptor",
+    "CapabilityDescriptor",
+    # Provider interfaces
+    "CapabilityDiscoveryProvider",
+    "CapabilityExecutionProvider",
+    "CapabilityProvider",
+    "LegacyCapabilityAdapter",
+    # Cache interfaces
+    "CapabilityCache",
+    "InMemoryCapabilityCache",
+    # Discovery interfaces
+    "DiscoveryError",
+    "PermissionBlockedDiscovery",
+    "DiscoveryResult",
+    # Legacy capabilities
     "TerminalCapability",
     "FilesystemCapability",
     "ApplicationsCapability",
     "MacOSSystemCapability",
     "DeveloperCapability",
+    "AccessibilityCapability",
+    "BrowserCapability",
+    "VisionCapability",
+    "TaskCapability",
 ]

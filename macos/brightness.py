@@ -27,10 +27,15 @@ def _init_display_services() -> bool:
         _ds_lib = ctypes.CDLL(ds_path)
         _cg_lib = ctypes.CDLL(cg_path)
 
-        # Function signatures
+        # Function signatures - prefer perceived brightness if available to support full hardware range
+        if hasattr(_ds_lib, "DisplayServicesGetBrightness") and hasattr(_ds_lib, "DisplayServicesSetBrightness"):
+            _ds_lib.DisplayServicesGetBrightness.argtypes = [ctypes.c_uint32, ctypes.POINTER(ctypes.c_float)]
+            _ds_lib.DisplayServicesGetBrightness.restype = ctypes.c_int
+            _ds_lib.DisplayServicesSetBrightness.argtypes = [ctypes.c_uint32, ctypes.c_float]
+            _ds_lib.DisplayServicesSetBrightness.restype = ctypes.c_int
+
         _ds_lib.DisplayServicesGetLinearBrightness.argtypes = [ctypes.c_uint32, ctypes.POINTER(ctypes.c_float)]
         _ds_lib.DisplayServicesGetLinearBrightness.restype = ctypes.c_int
-
         _ds_lib.DisplayServicesSetLinearBrightness.argtypes = [ctypes.c_uint32, ctypes.c_float]
         _ds_lib.DisplayServicesSetLinearBrightness.restype = ctypes.c_int
 
@@ -40,12 +45,15 @@ def _init_display_services() -> bool:
         # Test query on main display
         main_id = _cg_lib.CGMainDisplayID()
         test_val = ctypes.c_float(0.0)
-        ret = _ds_lib.DisplayServicesGetLinearBrightness(main_id, ctypes.byref(test_val))
+        if hasattr(_ds_lib, "DisplayServicesGetBrightness"):
+            ret = _ds_lib.DisplayServicesGetBrightness(main_id, ctypes.byref(test_val))
+        else:
+            ret = _ds_lib.DisplayServicesGetLinearBrightness(main_id, ctypes.byref(test_val))
         if ret == 0:
             _is_available = True
             return True
         else:
-            logger.warning(f"DisplayServicesGetLinearBrightness returned non-zero error: {ret}")
+            logger.warning(f"DisplayServices brightness query returned non-zero error: {ret}")
             _is_available = False
             return False
     except Exception as e:
@@ -70,7 +78,10 @@ def get_display_brightness(display_id: Optional[int] = None) -> tuple[bool, floa
     try:
         did = display_id if display_id is not None else _cg_lib.CGMainDisplayID()
         val = ctypes.c_float(0.0)
-        ret = _ds_lib.DisplayServicesGetLinearBrightness(ctypes.c_uint32(did), ctypes.byref(val))
+        if hasattr(_ds_lib, "DisplayServicesGetBrightness"):
+            ret = _ds_lib.DisplayServicesGetBrightness(ctypes.c_uint32(did), ctypes.byref(val))
+        else:
+            ret = _ds_lib.DisplayServicesGetLinearBrightness(ctypes.c_uint32(did), ctypes.byref(val))
         if ret != 0:
             return False, 0.0, f"DisplayServices error code: {ret}"
         return True, float(val.value), None
@@ -89,13 +100,19 @@ def set_display_brightness(level: float, display_id: Optional[int] = None) -> tu
     clamped = max(0.0, min(1.0, float(level)))
     try:
         did = display_id if display_id is not None else _cg_lib.CGMainDisplayID()
-        ret = _ds_lib.DisplayServicesSetLinearBrightness(ctypes.c_uint32(did), ctypes.c_float(clamped))
+        if hasattr(_ds_lib, "DisplayServicesSetBrightness"):
+            ret = _ds_lib.DisplayServicesSetBrightness(ctypes.c_uint32(did), ctypes.c_float(clamped))
+        else:
+            ret = _ds_lib.DisplayServicesSetLinearBrightness(ctypes.c_uint32(did), ctypes.c_float(clamped))
         if ret != 0:
             return False, 0.0, f"DisplayServices error code: {ret}"
 
         # Read back actual state
         val = ctypes.c_float(0.0)
-        _ds_lib.DisplayServicesGetLinearBrightness(ctypes.c_uint32(did), ctypes.byref(val))
+        if hasattr(_ds_lib, "DisplayServicesGetBrightness"):
+            _ds_lib.DisplayServicesGetBrightness(ctypes.c_uint32(did), ctypes.byref(val))
+        else:
+            _ds_lib.DisplayServicesGetLinearBrightness(ctypes.c_uint32(did), ctypes.byref(val))
         return True, float(val.value), None
     except Exception as e:
         return False, 0.0, f"Failed to set brightness: {e}"

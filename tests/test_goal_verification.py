@@ -28,6 +28,7 @@ class TestGoalVerification(unittest.TestCase):
         # Case A: File exists and has matching bytes
         with patch("pathlib.Path.exists", return_value=True), \
              patch("pathlib.Path.is_file", return_value=True), \
+             patch("pathlib.Path.read_text", return_value="hello world"), \
              patch("pathlib.Path.stat") as mock_stat:
             mock_stat.return_value.st_size = 11
             res = ExecutionResult(success=True, capability="filesystem", action="write_file")

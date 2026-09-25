@@ -5,7 +5,7 @@
   <img src="https://img.shields.io/badge/Local%20LLM-Ollama-blueviolet?style=for-the-badge&logo=ollama" alt="Ollama" />
   <img src="https://img.shields.io/badge/Speech%20to%20Text-Local%20Whisper-00A67E?style=for-the-badge&logo=openai" alt="Whisper" />
   <img src="https://img.shields.io/badge/Python-3.12%2B%20%7C%203.13-blue?style=for-the-badge&logo=python" alt="Python" />
-  <img src="https://img.shields.io/badge/Tests-118%20Passing-success?style=for-the-badge" alt="Tests Passing" />
+  <img src="https://img.shields.io/badge/Tests-228%20Passing-success?style=for-the-badge" alt="Tests Passing" />
   <img src="https://img.shields.io/badge/Privacy-100%25%20Local%20%26%20Offline-green?style=for-the-badge" alt="Local Privacy" />
 </p>
 
@@ -23,10 +23,11 @@
 - [System Architecture](#-system-architecture)
 - [Core Engines & Innovations](#-core-engines--innovations)
   - [1. General-Purpose Computer Use Engine](#1-general-purpose-computer-use-engine)
-  - [2. Deterministic-First Verification Subsystem](#2-deterministic-first-verification-subsystem)
-  - [3. Continuous Hands-Free Voice Assistant](#3-continuous-hands-free-voice-assistant)
-  - [4. Process Supervision & Event Engine](#4-process-supervision--event-engine)
-  - [5. Security, Risk Analysis & Audit Trails](#5-security-risk-analysis--audit-trails)
+  - [2. Truthful Execution & Anti-False-Success Verification](#2-truthful-execution--anti-false-success-verification)
+  - [3. Dynamic Capability Platform Foundation](#3-dynamic-capability-platform-foundation)
+  - [4. Continuous Hands-Free Voice Assistant](#4-continuous-hands-free-voice-assistant)
+  - [5. Process Supervision & Event Engine](#5-process-supervision--event-engine)
+  - [6. Security, Risk Analysis & Audit Trails](#6-security-risk-analysis--audit-trails)
 - [Installation & Setup](#-installation--setup)
 - [CLI Reference & Usage Guide](#-cli-reference--usage-guide)
   - [Hands-Free Voice Mode (`max listen`)](#1-hands-free-voice-mode-max-listen)
@@ -153,10 +154,19 @@ Unlike fragile agents that rely on screen scraping or hardcoded coordinates, MAX
 
 ---
 
-### 2. Deterministic-First Verification Subsystem
+### 2. Truthful Execution & Anti-False-Success Verification Subsystem
 
-MAX enforces a non-negotiable rule: **Zero Fake Verification.**
+MAX enforces a non-negotiable architectural invariant: **Zero Fake Verification.**
 
+```text
+EXECUTION SUCCESS != GOAL SUCCESS
+
+POSTCONDITION OBSERVED     → SATISFIED
+POSTCONDITION NOT PROVEN   → UNKNOWN
+POSTCONDITION PROVEN FALSE → UNSATISFIED
+```
+
+- **Explicit Postconditions**: The planner must declare verifiable postconditions in `ExecutionPlan`. Steps are not marked `SATISFIED` merely because an execution returned exit code 0 or an API returned true.
 - **Deterministic Hierarchy**:
   1. **Process State**: Direct kernel PID validation (`os.kill(pid, 0)`), process naming (`ps -A`), and bundle verification.
   2. **Filesystem State**: Path existence, byte size checks, and checksum validation.
@@ -169,11 +179,33 @@ MAX enforces a non-negotiable rule: **Zero Fake Verification.**
 
 ---
 
-### 3. Continuous Hands-Free Voice Assistant
+### 3. Dynamic Capability Platform Foundation
+
+MAX uses a modular, multi-provider capability architecture (detailed in [ADR-002](docs/architecture/ADR-002-dynamic-capability-platform.md)) that separates discovery from execution:
+
+- **Canonical Metadata Descriptors (`capabilities/models.py`)**:
+  - **Hierarchical Identity**: Disentangles the parent capability identity (`capability_id`, e.g. `filesystem.file`) from operations (`operation_id`, e.g. `write`, fully-qualified `filesystem.file.write`).
+  - **Availability Lifecycle (`AvailabilityStatus`)**: Explicit states (`AVAILABLE`, `DISABLED`, `MISSING_DEPENDENCY`, `PERMISSION_BLOCKED`, `DEGRADED`, `UNKNOWN`) paired with structured `AvailabilityInfo` that provides actionable remediation and macOS TCC settings links.
+  - **Generic Operational Constraints (`CapabilityConstraint`)**: Declarative, composable constraints including `RateLimitConstraint`, `TimeoutConstraint`, `ExecutionModeConstraint`, `ConcurrencyConstraint`, `PlatformConstraint`, and `CustomConstraint`.
+  - **Risk & Blast Radius (`CapabilityRisk`)**: Explicit risk tiers, interactive confirmation thresholds, blast radius declarations, and reversibility markers.
+  - **Verification Contracts (`VerificationContract`)**: Required postconditions and supported deterministic verification methods.
+  - **True Provenance (`CapabilityProvenance`)**: Source typing across `BUILTIN`, `SYSTEM_APP_INTENTS`, `SYSTEM_SHORTCUTS`, `ACCESSIBILITY_DISCOVERED`, `PLUGIN`, and `CUSTOM`, complete with semantic versioning and priority rankings.
+- **Decoupled Providers (`capabilities/provider.py`)**:
+  - `CapabilityDiscoveryProvider`: Discovers and monitors capability availability without executing actions.
+  - `CapabilityExecutionProvider`: Executes operations against validated schema parameters.
+  - `LegacyCapabilityAdapter`: Backward-compatibility adapter guaranteeing 100% zero-regression interop with existing capabilities.
+- **Dynamic Multi-Provider Registry (`capabilities/registry.py`)**:
+  - Thread-safe registry coordinating multiple heterogeneous providers.
+  - `InMemoryCapabilityCache` with targeted invalidation along 3 axes: by capability ID, by provider ID, or by provenance source.
+
+---
+
+### 4. Continuous Hands-Free Voice Assistant
 
 MAX operates as a native voice assistant running continuously in the background:
 
 - **Swift Audio Streaming (`bin/max-audio-stream` / `voice/audio_stream.swift`)**: High-performance streaming audio capture via macOS `AVFoundation` with minimal CPU and memory overhead.
+- **Speech Normalization (`voice/normalization.py`)**: Repairs phonetic splits from Whisper (e.g. *"text edit"* → *"TextEdit"*), strips conversational filler prefixes, and normalizes spoken phrasing before planning.
 - **Instant Wake Word Detection (`voice/wake.py`)**: Ultra-low-latency detection of *"Max"* or *"Hey Max"*.
 - **Earcon Audio Feedback**: Plays a native macOS system acknowledgement chime (`/System/Library/Sounds/Tink.aiff`) immediately upon wake word detection so you know MAX is listening without looking at your screen.
 - **Local Whisper STT (`voice/whisper_stt.py`)**: Transcribes speech using local OpenAI Whisper (`base.en` or `small.en`) running on Apple Silicon Neural Engine / Metal.
@@ -182,12 +214,13 @@ MAX operates as a native voice assistant running continuously in the background:
 
 ---
 
-### 4. Process Supervision & Event Engine
+### 5. Process Supervision & Event Engine
 
 MAX provides enterprise-grade process lifecycle management:
 
 - **Process Isolation**: Every background job is launched in an isolated process group via `subprocess.Popen(..., start_new_session=True)`.
 - **Process Tree Termination**: Terminating a task targets the entire process group using `os.killpg(pgid, signal.SIGTERM)`, escalating to `SIGKILL` after a grace period. Child processes (e.g. Node spawned by npm) are never orphaned.
+- **PID Reuse Protection**: Uses `libproc` / `proc_pidinfo` to verify process creation time before issuing termination signals, eliminating misdirected kills if a PID is recycled by the kernel.
 - **SQLite Persistence & Startup Reconciliation**: All task metadata is persisted in `~/.max/memory.db`. On startup, MAX inspects OS processes to reconcile dead or orphaned jobs.
 - **Filesystem & Port Watchers**:
   - `DirectoryWatcher`: Debounced polling observer tracking file additions, updates, and deletions.
@@ -196,7 +229,7 @@ MAX provides enterprise-grade process lifecycle management:
 
 ---
 
-### 5. Security, Risk Analysis & Audit Trails
+### 6. Security, Risk Analysis & Audit Trails
 
 Security is built into the runtime, not bolted on:
 
@@ -205,7 +238,7 @@ Security is built into the runtime, not bolted on:
   - `CRITICAL` / `HIGH`: Mass file modifications, privilege escalation (`sudo`), git force-pushes require interactive terminal confirmation (`y/N`).
   - `MEDIUM`: Software installation, background daemons, GUI keystrokes.
   - `LOW` / `SAFE`: Read-only inspections, system defaults queries, active window checks.
-- **Audit Logging (`security/audit.py`)**: Every tool request, parameter, risk level, and execution result is recorded to `~/.max/audit.jsonl` with timestamps and cryptographic UUIDs.
+- **Audit Logging (`security/audit.py`)**: Every tool request, parameter, risk level, and execution result is recorded to `~/.max/audit.jsonl` with timestamps and cryptographic hash chaining.
 
 ---
 
@@ -428,31 +461,37 @@ max workflow show --name daily_standup
 
 ## 🧪 Automated Testing & Verification
 
-MAX is tested with strict assertions: zero mocked success in production paths, zero hardcoded strings, and full coverage across capabilities, task supervision, voice detection, and goal verification.
+MAX is tested with strict assertions: zero mocked success in production paths, zero hardcoded strings, and comprehensive test coverage across capabilities, dynamic discovery, process supervision, voice detection, and goal verification.
 
-### Run All 118 Tests
+### Run All 228 Tests
 
+Run the full automated test suite (221 automated tests):
 ```bash
-python3 -m unittest discover -s tests -v
+pytest -v
 ```
 
-```text
-Ran 118 tests in 60.796s
-
-OK
+Run the live macOS system acceptance suite (7 live integration tests against native macOS apps):
+```bash
+python3 tests/live_phase1_acceptance.py
 ```
 
 ### Test Suite Breakdown:
 
+- `test_phase2_dynamic_capabilities.py`: Dynamic capability platform, canonical descriptors, provider decoupling, 3-axis cache invalidation, and legacy capability adapter.
+- `test_goal_verification.py`: Deterministic OS verification (process presence, filesystem state, postcondition evaluation, unverified action handling).
+- `test_speech_normalization.py` & `test_wake_stream.py`: Streaming audio ring buffer, phonetic split repair, and macOS app alias resolution.
+- `test_brightness_capability.py`: Native CoreDisplay/DisplayServices display brightness control for Apple Silicon Liquid Retina XDR displays.
+- `test_unsupported_gate.py`: Rejection of unsupported operations, missing hardware, and unregistered capabilities.
 - `test_computer_use_grounding.py`: Multi-signal element resolution, role aliases, and ambiguity rejection.
 - `test_computer_use_accessibility.py`: Accessibility tree extraction, semantic clicking, typing, and deterministic verification.
 - `test_computer_use_agent.py`: AgentCore closed-loop multi-step continuation and intent completeness checks.
-- `test_goal_verification.py`: Deterministic OS verification (process presence, filesystem state, unverified actions).
-- `test_tasks.py`: Real background process isolation, process group termination, and `EventBus` deterministic waiting.
+- `test_tasks.py`: Real background process isolation, process group termination, PID reuse protection via `libproc`, and `EventBus` deterministic waiting.
 - `test_wake_word.py`: Standalone wake word, inline command extraction, and negative false-positive rejection.
 - `test_voice_reliability.py`: Voice watchdog auto-recovery, spoken cancellation, and earcon audio fallbacks.
-- `test_security_hardening.py`: Hard-blocked catastrophic commands and high-risk confirmation guards.
-- `test_soak.py`: 5-command mini soak suite verifying zero memory leaks or dropped execution cycles.
+- `test_security_hardening.py` & `test_risk.py`: Hard-blocked catastrophic commands, high-risk confirmation guards, and audit log cryptographic hash chaining.
+- `test_workflows.py`: Deterministic workflow execution, step evaluation, and postcondition verification.
+- `test_soak.py`: Mini soak suite verifying zero memory leaks or dropped execution cycles.
+- `live_phase1_acceptance.py`: Real-host macOS verification across Terminal, TextEdit, Notes, Display Brightness, Calculator, Filesystem, and interactive risk confirmation.
 
 ---
 
